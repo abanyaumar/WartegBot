@@ -48,6 +48,26 @@ def fetch_restaurant(restaurant):
 
 @st.cache_data(ttl=300)
 def fetch_all():
+    # Use getAllData for one single API call instead of 12 separate calls
+    try:
+        r = requests.get(APPS_SCRIPT_URL, params={"action":"getAllData"}, timeout=120)
+        d = r.json()
+        if d.get("status") == "success" and d.get("data"):
+            out = {}
+            for rn, rows in d["data"].items():
+                if not rows:
+                    continue
+                df = pd.DataFrame(rows)
+                df["date"] = pd.to_datetime(df["date"], errors="coerce")
+                df = df.dropna(subset=["date"])
+                df = df[df["date"].dt.year >= 2019]
+                if not df.empty:
+                    df["restaurant"] = rn
+                    out[rn] = df.sort_values("date").reset_index(drop=True)
+            return out
+    except Exception as e:
+        st.warning(f"Gagal memuat semua data: {e}")
+    # Fallback: fetch individually
     out = {}
     for rn in RESTAURANTS:
         df = fetch_restaurant(rn)
