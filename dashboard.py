@@ -29,18 +29,21 @@ def kpi_card(col, label, value, sub=""):
 
 @st.cache_data(ttl=300)
 def fetch_restaurant(restaurant):
-    try:
-        r = requests.get(APPS_SCRIPT_URL,
-            params={"action":"getData","restaurant":restaurant}, timeout=30)
-        d = r.json()
-        if d.get("status") == "success" and d.get("rows"):
-            df = pd.DataFrame(d["rows"])
-            df["date"] = pd.to_datetime(df["date"], errors="coerce")
-            df = df.dropna(subset=["date"])
-            df = df[df["date"].dt.year >= 2019]
-            return df.sort_values("date").reset_index(drop=True)
-    except Exception as e:
-        st.warning(f"Error: {e}")
+    for attempt in range(3):
+        try:
+            r = requests.get(APPS_SCRIPT_URL,
+                params={"action":"getData","restaurant":restaurant}, timeout=60)
+            d = r.json()
+            if d.get("status") == "success" and d.get("rows"):
+                df = pd.DataFrame(d["rows"])
+                df["date"] = pd.to_datetime(df["date"], errors="coerce")
+                df = df.dropna(subset=["date"])
+                df = df[df["date"].dt.year >= 2019]
+                return df.sort_values("date").reset_index(drop=True)
+            break
+        except Exception as e:
+            if attempt == 2:
+                st.warning(f"Gagal memuat {restaurant}: {e}")
     return pd.DataFrame()
 
 @st.cache_data(ttl=300)
