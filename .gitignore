@@ -1,0 +1,9 @@
+﻿.env
+__pycache__/
+*.pyc
+*.pyo
+fix*.py
+patch.py
+writer.py
+write_gs.py
+write_koyeb.py

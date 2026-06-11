@@ -1,0 +1,196 @@
+const RESTAURANTS = ["Pisangan Lama","Kebagusan","Pejaten","Kranggan","Cibinong","Siaga Raya","Ragunan","Buncit Raya","WKB Tuban","WKB Bogor","Yogya UMY","Yogya ISI"];
+const COLS_MAIN    = ["Date","Omzet","Belanja_Warung","Belanja_Pasar","Total_Belanja","Keuntungan","GoFood_Order","GoFood_Net","Notes"];
+const COLS_PENG    = ["Periode","Beras","PLN","PDAM","Wifi","Sampah","Kasbon","Gaji","Lain_lain","Total","Catatan"];
+const COLS_GOFOOD  = ["Periode","Total_Bruto","Total_Netto","Jumlah_Transaksi","Catatan"];
+const COLS_BELANJA = ["Timestamp","Findings"];
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const restaurant = data.restaurant;
+    const type = data.type || "laporan_harian";
+    if (!RESTAURANTS.includes(restaurant)) return resp({status:"error",message:"Cabang tidak valid"});
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (type === "laporan_harian") return saveMainReport(ss, restaurant, data);
+    if (type === "pengeluaran")    return savePengeluaran(ss, restaurant, data);
+    if (type === "gofood")         return saveGofood(ss, restaurant, data);
+    if (type === "belanja_detail") return saveBelanjaDetail(ss, restaurant, data);
+    return resp({status:"error",message:"Tipe tidak dikenal: " + type});
+  } catch(err) { return resp({status:"error",message:err.toString()}); }
+}
+
+function doGet(e) {
+  try {
+    const action = e.parameter.action;
+    if (action === "summary") {
+      const restaurant = e.parameter.restaurant;
+      const days = parseInt(e.parameter.days) || 10;
+      const startDate = e.parameter.startDate || null;
+      return resp(getSummary(restaurant, days, startDate));
+    }
+    if (action === "getData") { return resp(getData(e.parameter.restaurant)); }
+    if (action === "getAllData") { return resp(getAllData()); }
+    return resp({status:"active",message:"Warteg Bot running!"});
+  } catch(err) { return resp({status:"error",message:err.toString()}); }
+}
+
+function getData(restaurant) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(restaurant);
+  if (!sheet || sheet.getLastRow() <= 1) return {status:"success",restaurant:restaurant,rows:[]};
+  const raw = sheet.getRange(2,1,sheet.getLastRow()-1,9).getValues();
+  const rows = raw.map(function(r) {
+    return {
+      date:           (r[0] instanceof Date)?Utilities.formatDate(r[0],"Asia/Jakarta","yyyy-MM-dd"):String(r[0]).substring(0,10),
+      omzet:          Number(r[1])||0,
+      belanja_warung: Number(r[2])||0,
+      belanja_pasar:  Number(r[3])||0,
+      total_belanja:  Number(r[4])||0,
+      keuntungan:     Number(r[5])||0,
+      gofood_order:   Number(r[6])||0,
+      gofood_net:     Number(r[7])||0,
+      notes:          String(r[8]||"")
+    };
+  }).filter(function(r){ return r.date && r.date.length >= 8; });
+  return {status:"success",restaurant:restaurant,rows:rows};
+}
+
+function getAllData() {
+  const result = {};
+  RESTAURANTS.forEach(function(rn){ result[rn] = getData(rn).rows; });
+  return {status:"success",data:result};
+}
+
+function saveMainReport(ss, restaurant, data) {
+  let sheet = getOrCreateSheet(ss, restaurant, COLS_MAIN);
+  const bw=Number(data.belanja_warung)||0, bp=Number(data.belanja_pasar)||0;
+  const omzet=Number(data.omzet)||0, tb=bw+bp, k=omzet-tb;
+  const tgl=data.tanggal||new Date().toISOString().split("T")[0];
+  const lastRow=sheet.getLastRow();
+  if (lastRow>1) {
+    const dates=sheet.getRange(2,1,lastRow-1,1).getValues();
+    const dup=dates.some(function(r){
+      if(!r[0]) return false;
+      var ex=(r[0] instanceof Date)?Utilities.formatDate(r[0],"Asia/Jakarta","yyyy-MM-dd"):String(r[0]).substring(0,10);
+      return ex===tgl;
+    });
+    if(dup) return resp({status:"duplicate",message:"Data "+tgl+" sudah ada"});
+  }
+  sheet.appendRow([new Date(tgl),omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
+  const nr=sheet.getLastRow();
+  sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY");
+  sheet.getRange(nr,2,1,7).setNumberFormat("#,##0");
+  if(nr%2===0) sheet.getRange(nr,1,1,COLS_MAIN.length).setBackground("#EBF3FB");
+  return resp({status:"success",type:"laporan_harian",restaurant:restaurant,tanggal:tgl,omzet:omzet,keuntungan:k});
+}
+
+function savePengeluaran(ss, restaurant, data) {
+  const sheetName = restaurant + "_Pengeluaran";
+  let sheet = getOrCreateSheet(ss, sheetName, COLS_PENG);
+  sheet.appendRow([
+    data.periode||"", Number(data.beras)||0, Number(data.pln)||0,
+    Number(data.pdam)||0, Number(data.wifi)||0, Number(data.sampah)||0,
+    Number(data.kasbon)||0, Number(data.gaji)||0, Number(data.lain_lain)||0,
+    Number(data.total)||0, data.catatan||""
+  ]);
+  const nr=sheet.getLastRow();
+  sheet.getRange(nr,2,1,9).setNumberFormat("#,##0");
+  if(nr%2===0) sheet.getRange(nr,1,1,COLS_PENG.length).setBackground("#FFF3E0");
+  return resp({status:"success",type:"pengeluaran",restaurant:restaurant});
+}
+
+function saveGofood(ss, restaurant, data) {
+  const sheetName = restaurant + "_GoFood";
+  let sheet = getOrCreateSheet(ss, sheetName, COLS_GOFOOD);
+  sheet.appendRow([
+    data.periode||"", Number(data.total_bruto)||0,
+    Number(data.total_netto)||0, Number(data.jumlah_transaksi)||0, data.catatan||""
+  ]);
+  const nr=sheet.getLastRow();
+  sheet.getRange(nr,2,1,3).setNumberFormat("#,##0");
+  if(nr%2===0) sheet.getRange(nr,1,1,COLS_GOFOOD.length).setBackground("#E8F5E9");
+  return resp({status:"success",type:"gofood",restaurant:restaurant});
+}
+
+function saveBelanjaDetail(ss, restaurant, data) {
+  const sheetName = restaurant + "_BelanjaAudit";
+  let sheet = getOrCreateSheet(ss, sheetName, COLS_BELANJA);
+  sheet.appendRow([new Date(), data.findings||""]);
+  const nr=sheet.getLastRow();
+  sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY HH:mm");
+  if(nr%2===0) sheet.getRange(nr,1,1,COLS_BELANJA.length).setBackground("#FCE4EC");
+  return resp({status:"success",type:"belanja_detail",restaurant:restaurant});
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  var dt = (d instanceof Date) ? d : new Date(d);
+  return Utilities.formatDate(dt, "Asia/Jakarta", "d MMM yyyy");
+}
+
+function getSummary(restaurant, days, startDateParam) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let totalOmzet=0, totalBelanja=0, totalGofoodNetto=0, totalPengeluaran=0;
+  let startDate="", endDate="";
+
+  // Main sheet: omzet + belanja only (no gofood here)
+  const mainSheet = ss.getSheetByName(restaurant);
+  if (mainSheet && mainSheet.getLastRow() > 1) {
+    const data = mainSheet.getRange(2,1,mainSheet.getLastRow()-1,8).getValues();
+    data.sort(function(a,b){ return new Date(b[0])-new Date(a[0]); });
+    const target = data.slice(0, days);
+    target.forEach(function(row){
+      totalOmzet   += Number(row[1])||0;
+      totalBelanja += (Number(row[2])||0) + (Number(row[3])||0);
+    });
+    if (target.length > 0) {
+      endDate   = fmtDate(target[0][0]);
+      startDate = fmtDate(target[target.length-1][0]);
+    }
+  }
+
+  // GoFood netto from dedicated GoFood sheet
+  const gofoodSheet = ss.getSheetByName(restaurant + "_GoFood");
+  if (gofoodSheet && gofoodSheet.getLastRow() > 1) {
+    const gdata = gofoodSheet.getRange(2,1,gofoodSheet.getLastRow()-1,3).getValues();
+    gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
+  }
+
+  // Pengeluaran total from col 10
+  const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
+  if (pengSheet && pengSheet.getLastRow() > 1) {
+    const pdata = pengSheet.getRange(2,10,pengSheet.getLastRow()-1,1).getValues();
+    pdata.forEach(function(row){ totalPengeluaran += Number(row[0])||0; });
+  }
+
+  const periode = (startDate && endDate) ? (startDate + " - " + endDate) : "-";
+
+  return {
+    status: "success",
+    restaurant: restaurant,
+    periode: periode,
+    total_omzet: totalOmzet,
+    total_gofood_netto: totalGofoodNetto,
+    total_belanja: totalBelanja,
+    total_pengeluaran: totalPengeluaran,
+    days_counted: days
+  };
+}
+
+function getOrCreateSheet(ss, name, cols) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(cols);
+    const h = sheet.getRange(1,1,1,cols.length);
+    h.setBackground("#1E3A5F");
+    h.setFontColor("#FFFFFF");
+    h.setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function resp(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+
+
