@@ -35,7 +35,9 @@ def fetch_restaurant(restaurant):
         d = r.json()
         if d.get("status") == "success" and d.get("rows"):
             df = pd.DataFrame(d["rows"])
-            df["date"] = pd.to_datetime(df["date"])
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df = df.dropna(subset=["date"])
+            df = df[df["date"].dt.year >= 2019]
             return df.sort_values("date").reset_index(drop=True)
     except Exception as e:
         st.warning(f"Error: {e}")
