@@ -1,4 +1,4 @@
-const RESTAURANTS = ["Pisangan Lama","Kebagusan","Pejaten","Kranggan","Cibinong","Siaga Raya","Ragunan","Buncit Raya","WKB Tuban","WKB Bogor","Yogya UMY","Yogya ISI"];
+﻿const RESTAURANTS = ["Pisangan Lama","Kebagusan","Pejaten","Kranggan","Cibinong","Siaga Raya","Ragunan","Buncit Raya","WKB Tuban","WKB Bogor","Yogya UMY","Yogya ISI"];
 const COLS_MAIN    = ["Date","Omzet","Belanja_Warung","Belanja_Pasar","Total_Belanja","Keuntungan","GoFood_Order","GoFood_Net","Notes"];
 const COLS_PENG    = ["Periode","Beras","PLN","PDAM","Wifi","Sampah","Kasbon","Gaji","Lain_lain","Total","Catatan"];
 const COLS_GOFOOD  = ["Periode","Total_Bruto","Total_Netto","Jumlah_Transaksi","Catatan"];
@@ -30,6 +30,16 @@ function doGet(e) {
     }
     if (action === "getData") { return resp(getData(e.parameter.restaurant)); }
     if (action === "getAllData") { return resp(getAllData()); }
+    if (action === "debug") {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sh = ss.getSheetByName(e.parameter.restaurant || "Pisangan Lama");
+      if (!sh) return resp({error:"sheet not found"});
+      var vals = sh.getRange(2,1,5,1).getValues();
+      var info = vals.map(function(r){
+        return {raw: String(r[0]), type: typeof r[0], isDate: r[0] instanceof Date, val: r[0]};
+      });
+      return resp({rows: info});
+    }
     return resp({status:"active",message:"Warteg Bot running!"});
   } catch(err) { return resp({status:"error",message:err.toString()}); }
 }
@@ -40,8 +50,16 @@ function getData(restaurant) {
   if (!sheet || sheet.getLastRow() <= 1) return {status:"success",restaurant:restaurant,rows:[]};
   const raw = sheet.getRange(2,1,sheet.getLastRow()-1,9).getValues();
   const rows = raw.map(function(r) {
+    var d = r[0];
+    var dateStr = "";
+    try {
+      var parsed = new Date(d);
+      if (!isNaN(parsed.getTime())) {
+        dateStr = Utilities.formatDate(parsed, "Asia/Jakarta", "yyyy-MM-dd");
+      }
+    } catch(e) {}
     return {
-      date:           (r[0] instanceof Date)?Utilities.formatDate(r[0],"Asia/Jakarta","yyyy-MM-dd"):String(r[0]).substring(0,10),
+      date:           dateStr,
       omzet:          Number(r[1])||0,
       belanja_warung: Number(r[2])||0,
       belanja_pasar:  Number(r[3])||0,
@@ -51,7 +69,7 @@ function getData(restaurant) {
       gofood_net:     Number(r[7])||0,
       notes:          String(r[8]||"")
     };
-  }).filter(function(r){ return r.date && r.date.length >= 8; });
+  }).filter(function(r){ return r.date && r.date.match(/^\d{4}-\d{2}-\d{2}$/); });
   return {status:"success",restaurant:restaurant,rows:rows};
 }
 
@@ -64,7 +82,10 @@ function getAllData() {
 function saveMainReport(ss, restaurant, data) {
   let sheet = getOrCreateSheet(ss, restaurant, COLS_MAIN);
   const bw=Number(data.belanja_warung)||0, bp=Number(data.belanja_pasar)||0;
-  const omzet=Number(data.omzet)||0, tb=bw+bp, k=omzet-tb;
+  const omzet=Number(data.omzet)||0;
+  // WKB Tuban: belanja_warung = carry-over funded by yesterday, nets out of omzet
+  const tb = (restaurant === "WKB Tuban") ? bp : (bw + bp);
+  const k  = omzet - tb;
   const tgl=data.tanggal||new Date().toISOString().split("T")[0];
   const lastRow=sheet.getLastRow();
   if (lastRow>1) {

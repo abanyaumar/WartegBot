@@ -47,6 +47,16 @@ def restaurant_keyboard():
 
 def extract_and_audit(image_bytes, restaurant):
     img_data = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+    # Special rule for WKB Tuban: carry-over from yesterday is added to omzet
+    wkb_tuban_note = ""
+    if restaurant == "WKB Tuban":
+        wkb_tuban_note = (
+            "\nATURAN KHUSUS WKB TUBAN:\n"
+            "- Jika ada angka saldo/kembalian dari hari sebelumnya (misal 84.000), "
+            "jumlahkan ke total pemasukan cash -> omzet\n"
+            "- Angka tersebut juga dicatat sebagai belanja_warung (karena dipakai untuk beli LPG/es batu)\n"
+            "- Contoh: cash shift = 2.000.000 + saldo kemarin 84.000 = omzet 2.084.000, belanja_warung = 84.000\n"
+        )
     prompt = (
         "Kamu asisten keuangan DAN auditor untuk cabang " + restaurant + ".\n"
         "Baca laporan harian TULISAN TANGAN ini.\n\n"
@@ -57,8 +67,9 @@ def extract_and_audit(image_bytes, restaurant):
         "   dan gofood_net (nominal setelah potongan). Jika hanya ada 1 angka GoFood, isi keduanya sama.\n"
         "   Jika tidak ada GoFood di laporan, isi 0.\n"
         "3. Belanja Warung (LPG/es batu/operasional) -> belanja_warung\n"
-        "4. Belanja Pasar (sembako/sayur/ayam/ikan/dll) -> belanja_pasar\n\n"
-        "ATURAN: omzet = pemasukan TUNAI saja. GoFood HARUS dipisah ke gofood_order/gofood_net.\n\n"
+        "4. Belanja Pasar (sembako/sayur/ayam/ikan/dll) -> belanja_pasar\n"
+        + wkb_tuban_note +
+        "\nATURAN: omzet = pemasukan TUNAI saja. GoFood HARUS dipisah ke gofood_order/gofood_net.\n\n"
         "OUTPUT dua bagian TANPA markdown:\n"
         "JSON_DATA:\n"
         '{"tanggal":"YYYY-MM-DD","omzet":0,"belanja_warung":0,"belanja_pasar":0,'
@@ -258,9 +269,19 @@ def parse_date_input(text):
         return text[:10]
     return None
 
+def keuntungan_calc(restaurant, data):
+    """WKB Tuban: keuntungan = omzet - belanja_pasar (belanja_warung is carry-over, nets out)"""
+    bw = data.get("belanja_warung", 0)
+    bp = data.get("belanja_pasar", 0)
+    omzet = data.get("omzet", 0)
+    if restaurant == "WKB Tuban":
+        tb = bp  # exclude belanja_warung from total (it was funded by carry-over)
+    else:
+        tb = bw + bp
+    return tb, omzet - tb
+
 def fmt(restaurant, data):
-    tb = data.get("belanja_warung",0) + data.get("belanja_pasar",0)
-    k  = data.get("omzet",0) - tb
+    tb, k = keuntungan_calc(restaurant, data)
     lines = [
         "<b>Hasil Baca -- " + restaurant + "</b>",
         "--------------------",
@@ -443,7 +464,7 @@ async def confirm_data(update, ctx):
     ok = save_to_sheets(ctx.user_data["restaurant"], ctx.user_data["extracted"])
     if ok:
         d = ctx.user_data["extracted"]
-        k = d.get("omzet",0) - (d.get("belanja_warung",0) + d.get("belanja_pasar",0))
+        tb, k = keuntungan_calc(ctx.user_data["restaurant"], d)
         ctx.user_data["belanja_photos"] = []
         ctx.user_data["belanja_counter_msg_id"] = None
         kb = [
@@ -455,7 +476,7 @@ async def confirm_data(update, ctx):
             "Cabang: " + ctx.user_data["restaurant"] + "\n"
             "Tanggal: " + str(d.get("tanggal","")) + "\n"
             "Pemasukan: Rp " + format(d.get("omzet",0),",") + "\n"
-            "Total Belanja: Rp " + format(d.get("belanja_warung",0)+d.get("belanja_pasar",0),",") + "\n"
+            "Total Belanja: Rp " + format(tb,",") + "\n"
             "Omzet Bersih: Rp " + format(k,",") + "\n\n"
             "<b>Ingin validasi belanja dengan nota/struk?</b>",
             parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
