@@ -466,14 +466,11 @@ async def confirm_data(update, ctx):
             "Selesai ketik /simpan", parse_mode="HTML")
         return EDIT_FIELD
     await q.edit_message_text("Menyimpan ke Google Sheets...")
-    # For WKB Tuban, pass adjusted omzet (raw omzet + belanja_warung carry-over)
+    # send original extracted data; Apps Script handles WKB Tuban omzet adjustment server-side
     save_data = dict(ctx.user_data["extracted"])
-    if ctx.user_data["restaurant"] == "WKB Tuban":
-        bw_co = save_data.get("belanja_warung", 0)
-        save_data["omzet"] = save_data.get("omzet", 0) + bw_co
     ok = save_to_sheets(ctx.user_data["restaurant"], save_data)
     if ok:
-        d = save_data  # save_data has WKB Tuban omzet already adjusted
+        d = save_data  # keuntungan_calc will adjust omzet internally for WKB Tuban
         omzet_adj, tb, k = keuntungan_calc(ctx.user_data["restaurant"], d)
         ctx.user_data["belanja_photos"] = []
         ctx.user_data["belanja_counter_msg_id"] = None
