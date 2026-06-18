@@ -82,8 +82,10 @@ function getAllData() {
 function saveMainReport(ss, restaurant, data) {
   let sheet = getOrCreateSheet(ss, restaurant, COLS_MAIN);
   const bw=Number(data.belanja_warung)||0, bp=Number(data.belanja_pasar)||0;
-  const omzet=Number(data.omzet)||0;
-  // WKB Tuban: belanja_warung = carry-over funded by yesterday, nets out of omzet
+  // WKB Tuban: carry-over from yesterday = belanja_warung, add it to omzet
+  const omzet = (restaurant === "WKB Tuban")
+    ? (Number(data.omzet)||0) + bw
+    : (Number(data.omzet)||0);
   const tb = (restaurant === "WKB Tuban") ? bp : (bw + bp);
   const k  = omzet - tb;
   const tgl=data.tanggal||new Date().toISOString().split("T")[0];

@@ -270,23 +270,28 @@ def parse_date_input(text):
     return None
 
 def keuntungan_calc(restaurant, data):
-    """WKB Tuban: keuntungan = omzet - belanja_pasar (belanja_warung is carry-over, nets out)"""
+    """WKB Tuban: carry-over = belanja_warung, so add bw to omzet, then keuntungan = omzet_adj - belanja_pasar"""
     bw = data.get("belanja_warung", 0)
     bp = data.get("belanja_pasar", 0)
     omzet = data.get("omzet", 0)
     if restaurant == "WKB Tuban":
-        tb = bp  # exclude belanja_warung from total (it was funded by carry-over)
+        # Carry-over from yesterday = belanja_warung, so it's added to income
+        omzet_adj = omzet + bw
+        tb = bp  # only belanja_pasar counts as real expense
+        k = omzet_adj - tb
     else:
+        omzet_adj = omzet
         tb = bw + bp
-    return tb, omzet - tb
+        k = omzet_adj - tb
+    return omzet_adj, tb, k
 
 def fmt(restaurant, data):
-    tb, k = keuntungan_calc(restaurant, data)
+    omzet_adj, tb, k = keuntungan_calc(restaurant, data)
     lines = [
         "<b>Hasil Baca -- " + restaurant + "</b>",
         "--------------------",
         "Tanggal        : <b>" + str(data.get("tanggal","?")) + "</b>",
-        "Pemasukan Tunai: <b>Rp " + format(data.get("omzet",0), ",") + "</b>",
+        "Pemasukan Tunai: <b>Rp " + format(omzet_adj, ",") + "</b>",
         "",
         "<b>Belanja Warung : Rp " + format(data.get("belanja_warung",0), ",") + "</b>",
     ]
@@ -461,10 +466,15 @@ async def confirm_data(update, ctx):
             "Selesai ketik /simpan", parse_mode="HTML")
         return EDIT_FIELD
     await q.edit_message_text("Menyimpan ke Google Sheets...")
-    ok = save_to_sheets(ctx.user_data["restaurant"], ctx.user_data["extracted"])
+    # For WKB Tuban, pass adjusted omzet (raw omzet + belanja_warung carry-over)
+    save_data = dict(ctx.user_data["extracted"])
+    if ctx.user_data["restaurant"] == "WKB Tuban":
+        bw_co = save_data.get("belanja_warung", 0)
+        save_data["omzet"] = save_data.get("omzet", 0) + bw_co
+    ok = save_to_sheets(ctx.user_data["restaurant"], save_data)
     if ok:
-        d = ctx.user_data["extracted"]
-        tb, k = keuntungan_calc(ctx.user_data["restaurant"], d)
+        d = save_data  # save_data has WKB Tuban omzet already adjusted
+        omzet_adj, tb, k = keuntungan_calc(ctx.user_data["restaurant"], d)
         ctx.user_data["belanja_photos"] = []
         ctx.user_data["belanja_counter_msg_id"] = None
         kb = [
@@ -475,7 +485,7 @@ async def confirm_data(update, ctx):
             "<b>TERSIMPAN!</b>\n\n"
             "Cabang: " + ctx.user_data["restaurant"] + "\n"
             "Tanggal: " + str(d.get("tanggal","")) + "\n"
-            "Pemasukan: Rp " + format(d.get("omzet",0),",") + "\n"
+            "Pemasukan: Rp " + format(omzet_adj,",") + "\n"
             "Total Belanja: Rp " + format(tb,",") + "\n"
             "Omzet Bersih: Rp " + format(k,",") + "\n\n"
             "<b>Ingin validasi belanja dengan nota/struk?</b>",
