@@ -939,11 +939,19 @@ async def ringkasan_period_selected(update, ctx):
     ctx.user_data["rsum_period"] = period_map[q.data]
     restaurant = ctx.user_data.get("rsum_restaurant","")
     label = ["","Periode 1 (Hari 1-10)","Periode 2 (Hari 11-20)","Periode 3 (Rekap Bulanan)"][period_map[q.data]]
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("10 Hari Terakhir", callback_data="rsum_latest")],
-        [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="rsum_manual")],
-        [InlineKeyboardButton("Batalkan", callback_data="cancel")],
-    ])
+    period_num = period_map[q.data]
+    if period_num == 3:
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("30 Hari Terakhir", callback_data="rsum_latest")],
+            [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="rsum_manual")],
+            [InlineKeyboardButton("Batalkan", callback_data="cancel")],
+        ])
+    else:
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("10 Hari Terakhir", callback_data="rsum_latest")],
+            [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="rsum_manual")],
+            [InlineKeyboardButton("Batalkan", callback_data="cancel")],
+        ])
     await q.edit_message_text(
         "<b>" + restaurant + "</b> - " + label + "\n\nPilih rentang data:",
         parse_mode="HTML", reply_markup=kb)
@@ -956,8 +964,9 @@ async def ringkasan_date_option_selected(update, ctx):
     if q.data == "cancel":
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     if q.data == "rsum_latest":
+        days = 31 if period == 3 else 10
         await q.edit_message_text("Mengambil data " + restaurant + "...")
-        s = fetch_summary(restaurant, days=10)
+        s = fetch_summary(restaurant, days=days)
         if not s or s.get("status") == "error":
             await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
         await q.edit_message_text(build_ringkasan_msg(restaurant, s, period), parse_mode="HTML")
