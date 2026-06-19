@@ -47,15 +47,7 @@ def restaurant_keyboard():
 
 def extract_and_audit(image_bytes, restaurant):
     img_data = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-    # WKB Tuban: AI reads raw cash only; code auto-adds belanja_warung as carry-over
-    wkb_tuban_note = ""
-    if restaurant == "WKB Tuban":
-        wkb_tuban_note = (
-            "\nATURAN KHUSUS WKB TUBAN:\n"
-            "- Catat HANYA total pemasukan tunai dari shift-shift (JANGAN tambahkan saldo/kembalian kemarin ke omzet)\n"
-            "- Saldo/kembalian kemarin dicatat sebagai belanja_warung saja\n"
-            "- Contoh: cash shift = 2.000.000, saldo kemarin 61.000 -> omzet = 2.000.000, belanja_warung = 61.000\n"
-        )
+    wkb_tuban_note = ""  # no special prompt; AI reads omzet including carry-over naturally
     prompt = (
         "Kamu asisten keuangan DAN auditor untuk cabang " + restaurant + ".\n"
         "Baca laporan harian TULISAN TANGAN ini.\n\n"
@@ -269,14 +261,14 @@ def parse_date_input(text):
     return None
 
 def keuntungan_calc(restaurant, data):
-    """WKB Tuban: carry-over = belanja_warung, so add bw to omzet, then keuntungan = omzet_adj - belanja_pasar"""
+    """WKB Tuban: AI reads omzet including carry-over; keuntungan = omzet - belanja_pasar only"""
     bw = data.get("belanja_warung", 0)
     bp = data.get("belanja_pasar", 0)
     omzet = data.get("omzet", 0)
     if restaurant == "WKB Tuban":
-        # Carry-over from yesterday = belanja_warung, so it's added to income
-        omzet_adj = omzet + bw
-        tb = bp  # only belanja_pasar counts as real expense
+        # AI already includes carry-over in omzet; only belanja_pasar is real expense
+        omzet_adj = omzet
+        tb = bp
         k = omzet_adj - tb
     else:
         omzet_adj = omzet
