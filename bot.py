@@ -248,6 +248,58 @@ def fetch_summary(restaurant, days=10, start_date=None):
         logger.error("Summary error: " + str(e))
     return None
 
+def generate_smart_audit(restaurant, current_data, audit_text):
+    """Enrich audit with historical comparison from Sheets."""
+    try:
+        summary = fetch_summary(restaurant, days=7)
+        if not summary or not summary.get("rows"):
+            return audit_text
+        rows = summary["rows"]
+        if len(rows) < 2:
+            return audit_text
+        # Calculate averages from past data (exclude today)
+        past = rows[:-1] if len(rows) > 1 else rows
+        avg_omzet = sum(r.get("omzet", 0) for r in past) / len(past)
+        avg_k = sum(r.get("keuntungan", 0) for r in past) / len(past)
+        cur_omzet = current_data.get("omzet", 0)
+        cur_bw = current_data.get("belanja_warung", 0)
+        # For WKB Tuban, adjusted omzet
+        if restaurant == "WKB Tuban":
+            cur_omzet = cur_omzet + cur_bw
+        cur_k, _, _ = None, None, None
+        _, tb, cur_k = keuntungan_calc(restaurant, current_data)
+
+        lines = []
+        # Anomaly check
+        if avg_omzet > 0:
+            pct = (cur_omzet - avg_omzet) / avg_omzet * 100
+            if pct < -30:
+                lines.append(f"⚠️ Omzet hari ini Rp {cur_omzet:,} lebih rendah {abs(pct):.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
+            elif pct > 50:
+                lines.append(f"📈 Omzet hari ini Rp {cur_omzet:,} lebih tinggi {pct:.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
+            else:
+                lines.append(f"✅ Omzet normal (rata-rata 7 hari: Rp {avg_omzet:,.0f})")
+        # Profitability verdict
+        if cur_k is not None:
+            if cur_k >= avg_k * 0.9:
+                verdict = "✅ BAGUS"
+            elif cur_k >= 0:
+                verdict = "⚠️ PERLU PERHATIAN"
+            else:
+                verdict = "❌ RUGI"
+            lines.append(f"Keuntungan: Rp {cur_k:,} | Verdict: {verdict} (rata-rata: Rp {avg_k:,.0f})")
+
+        enriched = "
+".join(lines)
+        if audit_text:
+            return enriched + "
+
+" + audit_text
+        return enriched
+    except Exception as e:
+        logger.error("Smart audit error: " + str(e))
+        return audit_text
+
 def parse_date_input(text):
     text = text.strip()
     MONTHS = {"jan":1,"feb":2,"mar":3,"apr":4,"mei":5,"may":5,"jun":6,"jul":7,
@@ -366,6 +418,7 @@ async def restaurant_selected(update, ctx):
     data["restaurant"] = restaurant
     ctx.user_data["extracted"] = data
     ctx.user_data["audit_text"] = audit
+    audit = generate_smart_audit(restaurant, data, audit)
     summary = fmt(restaurant, data)
     if audit:
         summary += "\n\n<b>Catatan Audit AI:</b>\n" + esc(audit)
