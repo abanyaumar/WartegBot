@@ -188,6 +188,26 @@ function getSummary(restaurant, days, startDateParam) {
 
   const periode = (startDate && endDate) ? (startDate + " - " + endDate) : "-";
 
+  // Build per-day rows for detailed display
+  let dailyRows = [];
+  const mainSheet2 = ss.getSheetByName(restaurant);
+  if (mainSheet2 && mainSheet2.getLastRow() > 1) {
+    const data2 = mainSheet2.getRange(2,1,mainSheet2.getLastRow()-1,8).getValues();
+    data2.sort(function(a,b){ return new Date(b[0])-new Date(a[0]); });
+    data2.slice(0, days).forEach(function(row){
+      dailyRows.push({
+        date:           fmtDate(row[0]),
+        omzet:          Number(row[1])||0,
+        belanja_warung: Number(row[2])||0,
+        belanja_pasar:  Number(row[3])||0,
+        total_belanja:  (Number(row[2])||0)+(Number(row[3])||0),
+        keuntungan:     Number(row[5])||0,
+        gofood_net:     Number(row[7])||0
+      });
+    });
+    dailyRows.sort(function(a,b){ return a.date > b.date ? 1 : -1; });
+  }
+
   return {
     status: "success",
     restaurant: restaurant,
@@ -196,7 +216,8 @@ function getSummary(restaurant, days, startDateParam) {
     total_gofood_netto: totalGofoodNetto,
     total_belanja: totalBelanja,
     total_pengeluaran: totalPengeluaran,
-    days_counted: days
+    days_counted: days,
+    rows: dailyRows
   };
 }
 

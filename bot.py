@@ -769,20 +769,39 @@ def build_ringkasan_msg(restaurant, s):
     om = s.get("total_omzet",0); gf = s.get("total_gofood_netto",0)
     bl = s.get("total_belanja",0); pe = s.get("total_pengeluaran",0)
     ti = om + gf; to = bl + pe; pr = ti - to
-    return "\n".join([
+    rows = s.get("rows", [])
+
+    lines = [
         "<b>Ringkasan 10 Hari - " + restaurant + "</b>",
         "Periode: <b>" + s.get("periode","-") + "</b>",
-        "====================","<b>PEMASUKAN:</b>",
-        "Omzet Harian  : Rp " + format(om,","),
-        "GoFood Netto  : Rp " + format(gf,","),
-        "Total Masuk   : <b>Rp " + format(ti,",") + "</b>",
-        "--------------------","<b>PENGELUARAN:</b>",
-        "Total Belanja : Rp " + format(bl,","),
-        "Pengeluaran   : Rp " + format(pe,","),
-        "Total Keluar  : <b>Rp " + format(to,",") + "</b>",
         "====================",
+    ]
+
+    # Per-day detail
+    if rows:
+        lines.append("<b>DETAIL PER HARI:</b>")
+        for r in rows:
+            d = r.get("date","?")
+            r_om = r.get("omzet", 0)
+            r_gf = r.get("gofood_net", 0)
+            r_bl = r.get("total_belanja", 0)
+            r_k  = r.get("keuntungan", 0)
+            r_in = r_om + r_gf
+            lines.append("")
+            lines.append("<b>" + d + "</b>")
+            lines.append("  Pemasukan : Rp " + format(r_in, ",") + ("  (GoFood: Rp " + format(r_gf,",") + ")" if r_gf > 0 else ""))
+            lines.append("  Pengeluaran: Rp " + format(r_bl, ","))
+            lines.append("  Keuntungan: <b>Rp " + format(r_k, ",") + "</b>")
+        lines.append("")
+        lines.append("====================")
+
+    lines += [
+        "<b>TOTAL:</b>",
+        "Total Pemasukan : Rp " + format(ti,","),
+        "Total Pengeluaran: Rp " + format(to,","),
         "<b>PROFIT BERSIH: Rp " + format(pr,",") + "</b>",
-    ])
+    ]
+    return "\n".join(lines)
 
 async def ringkasan_start(update, ctx):
     await update.message.reply_text("<b>Ringkasan 10 Hari</b>\n\nPilih cabang:", parse_mode="HTML", reply_markup=restaurant_keyboard())
