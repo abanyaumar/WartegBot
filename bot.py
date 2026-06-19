@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import os, json, logging, re, html, datetime
 from google import genai
 from google.genai import types
@@ -765,86 +765,78 @@ async def gofood_confirm(update, ctx):
     return ConversationHandler.END
 
 # ======= RINGKASAN =======
-def get_period_from_rows(rows):
-    """Determine 10-day period (1/2/3) and month from rows."""
+def get_month_and_rows(restaurant, rows):
     if not rows:
-        return None, None
-    # Find dominant month
+        return None, []
     mc = {}
     for r in rows:
-        d = r.get("date","")
+        d = r.get("date", "")
         if len(d) >= 7:
             mc[d[:7]] = mc.get(d[:7], 0) + 1
     if not mc:
-        return None, None
+        return None, []
     month = max(mc, key=mc.get)
-    # Find max day in that month
-    max_day = 0
-    for r in rows:
-        d = r.get("date","")
-        if d[:7] == month and len(d) >= 10:
-            try: max_day = max(max_day, int(d[8:10]))
-            except: pass
-    if max_day <= 10:   return 1, month
-    elif max_day <= 20: return 2, month
-    else:               return 3, month
+    s_full = fetch_summary(restaurant, days=31)
+    all_rows = s_full.get("rows", []) if s_full else []
+    month_rows = sorted(
+        [r for r in all_rows if r.get("date", "")[:7] == month],
+        key=lambda r: r.get("date", "")
+    )
+    return month, month_rows
 
 def calculate_profit_sharing(restaurant, rows):
-    """Build profit sharing section based on which 10-day period we are in."""
-    period, month = get_period_from_rows(rows)
-    if period is None:
+    month, month_rows = get_month_and_rows(restaurant, rows)
+    if not month_rows:
         return ""
-    profit_current = sum(r.get("keuntungan", 0) for r in rows)
-    lines = ["", "====================", "<b>💰 BAGI HASIL:</b>"]
-
+    n = len(month_rows)
+    if n <= 10:   period = 1
+    elif n <= 20: period = 2
+    else:         period = 3
+    p1 = month_rows[:10]
+    p2 = month_rows[10:20]
+    p3 = month_rows[20:]
+    def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
+    def drange(lst):
+        if not lst: return "-"
+        return lst[0].get("date", "-") + " s/d " + lst[-1].get("date", "-")
+    profit_p1 = prof(p1)
+    profit_p2 = prof(p2)
+    profit_p3 = prof(p3)
+    lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
         lines += [
-            "Periode ke-1 (Tgl 1–10)",
-            "Manager → Investor: <b>Rp " + format(profit_current, ",") + "</b>",
+            "Periode ke-1 (" + str(len(p1)) + " hari operasional)",
+            "\U0001f4c5 " + drange(p1),
+            "Manager \u2192 Investor: <b>Rp " + format(profit_p1, ",") + "</b>",
             "<i>(100% profit periode ini)</i>",
         ]
     elif period == 2:
         lines += [
-            "Periode ke-2 (Tgl 11–20)",
-            "Manager → Investor: <b>Rp " + format(profit_current, ",") + "</b>",
+            "Periode ke-2 (" + str(len(p2)) + " hari operasional)",
+            "\U0001f4c5 " + drange(p2),
+            "Manager \u2192 Investor: <b>Rp " + format(profit_p2, ",") + "</b>",
             "<i>(100% profit periode ini)</i>",
         ]
-    elif period == 3:
-        # Fetch full month (up to 30 rows) to get all 3 periods
-        s_full = fetch_summary(restaurant, days=30)
-        all_rows = s_full.get("rows", []) if s_full else []
-        def day_num(r):
-            try: return int(r.get("date","")[8:10])
-            except: return 0
-        month_rows = [r for r in all_rows if r.get("date","")[:7] == month]
-        p1 = [r for r in month_rows if day_num(r) <= 10]
-        p2 = [r for r in month_rows if 11 <= day_num(r) <= 20]
-        p3 = [r for r in month_rows if day_num(r) >= 21]
-        profit_p1 = sum(r.get("keuntungan", 0) for r in p1)
-        profit_p2 = sum(r.get("keuntungan", 0) for r in p2)
-        profit_p3 = sum(r.get("keuntungan", 0) for r in p3)
-        total_30   = profit_p1 + profit_p2 + profit_p3
-        inv_share  = total_30 // 2
-        already    = profit_p1 + profit_p2  # already transferred by manager
-        balance    = inv_share - already
+    else:
+        total = profit_p1 + profit_p2 + profit_p3
+        inv   = total // 2
+        paid  = profit_p1 + profit_p2
+        bal   = inv - paid
         lines += [
-            "Periode ke-3 (Tgl 21–31) — <b>Rekap Bulanan</b>",
-            "",
-            "Profit P1 (1–10)   : Rp " + format(profit_p1, ","),
-            "Profit P2 (11–20)  : Rp " + format(profit_p2, ","),
-            "Profit P3 (21–31)  : Rp " + format(profit_p3, ","),
-            "Total 30 Hari      : <b>Rp " + format(total_30, ",") + "</b>",
-            "",
-            "Bagian Investor (50%): Rp " + format(inv_share, ","),
-            "Sudah ditransfer     : Rp " + format(already, ","),
-            "",
+            "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
+            "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ","),
+            "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ","),
+            "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
+            "Total Bulanan: <b>Rp " + format(total, ",") + "</b>", "",
+            "Bagian Investor (50%): Rp " + format(inv, ","),
+            "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
         ]
-        if balance > 0:
-            lines.append("➡️ Manager transfer ke Investor: <b>Rp " + format(balance, ",") + "</b>")
-        elif balance < 0:
-            lines.append("⬅️ Investor kembalikan ke Manager: <b>Rp " + format(abs(balance), ",") + "</b>")
+        if bal > 0:
+            lines.append("\u27a1\ufe0f Manager transfer ke Investor: <b>Rp " + format(bal, ",") + "</b>")
+        elif bal < 0:
+            lines.append("\u2b05\ufe0f Investor kembalikan ke Manager: <b>Rp " + format(abs(bal), ",") + "</b>")
         else:
-            lines.append("✅ Sudah seimbang, tidak ada transfer")
+            lines.append("\u2705 Sudah seimbang, tidak ada transfer")
     return "\n".join(lines)
 
 def build_ringkasan_msg(restaurant, s):
