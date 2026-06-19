@@ -30,7 +30,7 @@ RESTAURANTS = [
 SELECT_RESTAURANT, CONFIRM_DATA, EDIT_FIELD, VALIDATE_BELANJA, MAIN_GOFOOD = range(5)
 PENG_SELECT, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 7)
 GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(7, 11)
-RSUM_SELECT, RSUM_DATE = 11, 12
+RSUM_SELECT, RSUM_PERIOD, RSUM_DATE = 11, 13, 12
 
 def esc(text):
     return html.escape(str(text))
@@ -784,14 +784,10 @@ def get_month_and_rows(restaurant, rows):
     )
     return month, month_rows
 
-def calculate_profit_sharing(restaurant, rows):
+def calculate_profit_sharing(restaurant, rows, period=1):
     month, month_rows = get_month_and_rows(restaurant, rows)
     if not month_rows:
         return ""
-    n = len(month_rows)
-    if n <= 10:   period = 1
-    elif n <= 20: period = 2
-    else:         period = 3
     p1 = month_rows[:10]
     p2 = month_rows[10:20]
     p3 = month_rows[20:]
@@ -839,7 +835,7 @@ def calculate_profit_sharing(restaurant, rows):
             lines.append("\u2705 Sudah seimbang, tidak ada transfer")
     return "\n".join(lines)
 
-def build_ringkasan_msg(restaurant, s):
+def build_ringkasan_msg(restaurant, s, period=1):
     om = s.get("total_omzet",0); gf = s.get("total_gofood_netto",0)
     bl = s.get("total_belanja",0); pe = s.get("total_pengeluaran",0)
     ti = om + gf; to = bl + pe; pr = ti - to
@@ -875,7 +871,7 @@ def build_ringkasan_msg(restaurant, s):
         "Total Pengeluaran: Rp " + format(to,","),
         "<b>PROFIT BERSIH: Rp " + format(pr,",") + "</b>",
     ]
-    profit_section = calculate_profit_sharing(restaurant, rows)
+    profit_section = calculate_profit_sharing(restaurant, rows, period)
     if profit_section:
         lines.append(profit_section)
     return "\n".join(lines)
@@ -891,16 +887,38 @@ async def ringkasan_restaurant_selected(update, ctx):
     restaurant = q.data.split("|",1)[1]
     ctx.user_data["rsum_restaurant"] = restaurant
     kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Periode 1 (Hari ke 1-10)",    callback_data="rsum_p1")],
+        [InlineKeyboardButton("Periode 2 (Hari ke 11-20)",   callback_data="rsum_p2")],
+        [InlineKeyboardButton("Periode 3 (Rekap Bulanan)",   callback_data="rsum_p3")],
+        [InlineKeyboardButton("Batalkan", callback_data="cancel")],
+    ])
+    await q.edit_message_text("<b>" + restaurant + "</b>\n\nPilih periode bagi hasil:", parse_mode="HTML", reply_markup=kb)
+    return RSUM_PERIOD
+
+async def ringkasan_period_selected(update, ctx):
+    q = update.callback_query; await q.answer()
+    if q.data == "cancel":
+        await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
+    period_map = {"rsum_p1": 1, "rsum_p2": 2, "rsum_p3": 3}
+    if q.data not in period_map:
+        await q.edit_message_text("Pilihan tidak valid."); return ConversationHandler.END
+    ctx.user_data["rsum_period"] = period_map[q.data]
+    restaurant = ctx.user_data.get("rsum_restaurant","")
+    label = ["","Periode 1 (Hari 1-10)","Periode 2 (Hari 11-20)","Periode 3 (Rekap Bulanan)"][period_map[q.data]]
+    kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("10 Hari Terakhir", callback_data="rsum_latest")],
         [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="rsum_manual")],
         [InlineKeyboardButton("Batalkan", callback_data="cancel")],
     ])
-    await q.edit_message_text("<b>" + restaurant + "</b>\n\nPilih periode:", parse_mode="HTML", reply_markup=kb)
+    await q.edit_message_text(
+        "<b>" + restaurant + "</b> - " + label + "\n\nPilih rentang data:",
+        parse_mode="HTML", reply_markup=kb)
     return RSUM_DATE
 
-async def ringkasan_period_selected(update, ctx):
+async def ringkasan_date_option_selected(update, ctx):
     q = update.callback_query; await q.answer()
     restaurant = ctx.user_data.get("rsum_restaurant","")
+    period     = ctx.user_data.get("rsum_period", 1)
     if q.data == "cancel":
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     if q.data == "rsum_latest":
@@ -908,7 +926,7 @@ async def ringkasan_period_selected(update, ctx):
         s = fetch_summary(restaurant, days=10)
         if not s or s.get("status") == "error":
             await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
-        await q.edit_message_text(build_ringkasan_msg(restaurant, s), parse_mode="HTML")
+        await q.edit_message_text(build_ringkasan_msg(restaurant, s, period), parse_mode="HTML")
         return ConversationHandler.END
     if q.data == "rsum_manual":
         await q.edit_message_text(
@@ -937,7 +955,8 @@ async def ringkasan_date_input(update, ctx):
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
-    await update.message.reply_text(build_ringkasan_msg(restaurant, s), parse_mode="HTML")
+    period = ctx.user_data.get("rsum_period", 1)
+    await update.message.reply_text(build_ringkasan_msg(restaurant, s, period), parse_mode="HTML")
     return ConversationHandler.END
 
 async def cancel(update, ctx):
@@ -1018,7 +1037,9 @@ def main():
         entry_points=[CommandHandler("ringkasan10hari", ringkasan_start)],
         states={
             RSUM_SELECT: [CallbackQueryHandler(ringkasan_restaurant_selected)],
+            RSUM_PERIOD: [CallbackQueryHandler(ringkasan_period_selected)],
             RSUM_DATE:   [
+                CallbackQueryHandler(ringkasan_date_option_selected, pattern="^rsum_"),
                 CallbackQueryHandler(ringkasan_period_selected),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ringkasan_date_input),
             ],
