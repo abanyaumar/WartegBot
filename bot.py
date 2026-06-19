@@ -47,15 +47,14 @@ def restaurant_keyboard():
 
 def extract_and_audit(image_bytes, restaurant):
     img_data = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-    # Special rule for WKB Tuban: carry-over from yesterday is added to omzet
+    # WKB Tuban: AI reads raw cash only; code auto-adds belanja_warung as carry-over
     wkb_tuban_note = ""
     if restaurant == "WKB Tuban":
         wkb_tuban_note = (
             "\nATURAN KHUSUS WKB TUBAN:\n"
-            "- Jika ada angka saldo/kembalian dari hari sebelumnya (misal 84.000), "
-            "jumlahkan ke total pemasukan cash -> omzet\n"
-            "- Angka tersebut juga dicatat sebagai belanja_warung (karena dipakai untuk beli LPG/es batu)\n"
-            "- Contoh: cash shift = 2.000.000 + saldo kemarin 84.000 = omzet 2.084.000, belanja_warung = 84.000\n"
+            "- Catat HANYA total pemasukan tunai dari shift-shift (JANGAN tambahkan saldo/kembalian kemarin ke omzet)\n"
+            "- Saldo/kembalian kemarin dicatat sebagai belanja_warung saja\n"
+            "- Contoh: cash shift = 2.000.000, saldo kemarin 61.000 -> omzet = 2.000.000, belanja_warung = 61.000\n"
         )
     prompt = (
         "Kamu asisten keuangan DAN auditor untuk cabang " + restaurant + ".\n"
