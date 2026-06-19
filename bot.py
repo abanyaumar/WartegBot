@@ -1050,7 +1050,7 @@ def main():
         states={
             SELECT_RESTAURANT: [CallbackQueryHandler(restaurant_selected)],
             MAIN_GOFOOD: [
-                CallbackQueryHandler(main_gofood_action, pattern="^(input_gofood|no_gofood)$"),
+                CallbackQueryHandler(main_gofood_action, pattern="^(input_gofood|no_gofood|gf_gross|gf_net)$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, main_gofood_text),
             ],
             CONFIRM_DATA:      [CallbackQueryHandler(confirm_data)],
