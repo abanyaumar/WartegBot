@@ -63,7 +63,7 @@ def extract_and_audit(image_bytes, restaurant):
         "1. Pemasukan tunai/cash per shift (pagi/siang/malam/shift 1/2/3) -> jumlahkan ke omzet\n"
         "   PENTING: JANGAN masukkan pendapatan GoFood ke dalam omzet\n"
         "2. Pendapatan GoFood/GrabFood/online order -> gofood_order (nominal bruto/kotor)\n"
-        "   dan gofood_net (nominal setelah potongan). Jika hanya ada 1 angka GoFood, isi keduanya sama.\n"
+        "   gofood_net = isi sama dengan gofood_order (potongan QRIS 0.7% dihitung otomatis sistem)\n"
         "   Jika tidak ada GoFood di laporan, isi 0.\n"
         "3. Belanja Warung (LPG/es batu/operasional) -> belanja_warung\n"
         "4. Belanja Pasar (sembako/sayur/ayam/ikan/dll) -> belanja_pasar\n"
@@ -92,6 +92,8 @@ def extract_and_audit(image_bytes, restaurant):
             d = json.loads(m.group())
             for f in ["omzet","belanja_warung","belanja_pasar","gofood_order","gofood_net"]:
                 d[f] = int(str(d.get(f,0)).replace(",","").replace(".","") or 0)
+            if d.get("gofood_order", 0) > 0:
+                d["gofood_net"] = round(d["gofood_order"] * 0.993)
             for g in ["belanja_warung_items","belanja_pasar_items"]:
                 if g in d and isinstance(d[g], dict):
                     d[g] = {k: int(str(v).replace(",","").replace(".","") or 0) for k,v in d[g].items()}
@@ -473,7 +475,7 @@ async def main_gofood_text(update, ctx):
             return MAIN_GOFOOD
         amount = int(raw)
         ctx.user_data["extracted"]["gofood_order"] = amount
-        ctx.user_data["extracted"]["gofood_net"] = amount
+        ctx.user_data["extracted"]["gofood_net"] = round(amount * 0.993)  # QRIS fee 0.7%
     d = ctx.user_data["extracted"]
     restaurant = ctx.user_data.get("restaurant","")
     audit = ctx.user_data.get("audit_text")
