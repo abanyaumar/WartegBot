@@ -785,35 +785,36 @@ def get_month_and_rows(restaurant, rows):
     return month, month_rows
 
 def calculate_profit_sharing(restaurant, rows, period=1):
-    month, month_rows = get_month_and_rows(restaurant, rows)
-    if not month_rows:
-        return ""
-    p1 = month_rows[:10]
-    p2 = month_rows[10:20]
-    p3 = month_rows[20:]
     def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
     def drange(lst):
         if not lst: return "-"
         return lst[0].get("date", "-") + " s/d " + lst[-1].get("date", "-")
-    profit_p1 = prof(p1)
-    profit_p2 = prof(p2)
-    profit_p3 = prof(p3)
+    sorted_rows = sorted(rows, key=lambda r: r.get("date", ""))
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
+        profit = prof(sorted_rows)
         lines += [
-            "Periode ke-1 (" + str(len(p1)) + " hari operasional)",
-            "\U0001f4c5 " + drange(p1),
-            "Manager \u2192 Investor: <b>Rp " + format(profit_p1, ",") + "</b>",
+            "Periode ke-1 (" + str(len(sorted_rows)) + " hari operasional)",
+            "\U0001f4c5 " + drange(sorted_rows),
+            "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit periode ini)</i>",
         ]
     elif period == 2:
+        profit = prof(sorted_rows)
         lines += [
-            "Periode ke-2 (" + str(len(p2)) + " hari operasional)",
-            "\U0001f4c5 " + drange(p2),
-            "Manager \u2192 Investor: <b>Rp " + format(profit_p2, ",") + "</b>",
+            "Periode ke-2 (" + str(len(sorted_rows)) + " hari operasional)",
+            "\U0001f4c5 " + drange(sorted_rows),
+            "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit periode ini)</i>",
         ]
     else:
+        month, month_rows = get_month_and_rows(restaurant, rows)
+        if not month_rows:
+            month_rows = sorted_rows
+        p1 = month_rows[:10]
+        p2 = month_rows[10:20]
+        p3 = month_rows[20:]
+        profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
         total = profit_p1 + profit_p2 + profit_p3
         inv   = total // 2
         paid  = profit_p1 + profit_p2
