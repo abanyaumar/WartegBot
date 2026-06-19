@@ -453,11 +453,32 @@ async def main_gofood_action(update, ctx):
     if q.data == "input_gofood":
         gf = ctx.user_data["extracted"].get("gofood_order", 0)
         hint = " (AI baca: Rp " + format(gf,",") + ")" if gf > 0 else ""
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Input GROSS (bruto)", callback_data="gf_gross")],
+            [InlineKeyboardButton("Input NET (setelah potongan)", callback_data="gf_net")],
+            [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
+        ])
+        await q.edit_message_text(
+            "<b>Input GoFood</b>" + hint + "\n\nPilih jenis input:",
+            parse_mode="HTML", reply_markup=kb)
+        return MAIN_GOFOOD
+    if q.data == "gf_gross":
         ctx.user_data["gofood_step"] = "order"
         await q.edit_message_text(
-            "<b>Input GoFood</b>" + hint + "\n\n"
-            "Langkah 1/2 - Ketik nominal GoFood <b>GROSS</b> (bruto, sebelum potongan):\n"
+            "<b>Input GoFood GROSS</b>\n\n"
+            "Ketik nominal bruto (sebelum potongan):\n"
             "<code>150000</code>\n\n"
+            "Net akan dihitung otomatis (QRIS 0.7%)\n"
+            "Atau ketik <code>skip</code> jika tidak ada.",
+            parse_mode="HTML")
+        return MAIN_GOFOOD
+    if q.data == "gf_net":
+        ctx.user_data["gofood_step"] = "net_only"
+        await q.edit_message_text(
+            "<b>Input GoFood NET</b>\n\n"
+            "Ketik nominal setelah potongan platform:\n"
+            "<code>135000</code>\n\n"
+            "Gross akan diisi sama dengan net.\n"
             "Atau ketik <code>skip</code> jika tidak ada.",
             parse_mode="HTML")
         return MAIN_GOFOOD
@@ -471,6 +492,15 @@ async def main_gofood_text(update, ctx):
     if text.lower() == "skip":
         ctx.user_data["extracted"]["gofood_order"] = 0
         ctx.user_data["extracted"]["gofood_net"] = 0
+    elif step == "net_only":
+        raw = re.sub(r"[^\\d]", "", re.sub(r"\\.(?=\\d{3})", "", text))
+        if not raw:
+            await update.message.reply_text("Angka tidak valid. Ketik nominal atau <code>skip</code>.", parse_mode="HTML")
+            return MAIN_GOFOOD
+        net_amount = int(raw)
+        ctx.user_data["extracted"]["gofood_order"] = net_amount
+        ctx.user_data["extracted"]["gofood_net"] = net_amount
+        ctx.user_data["gofood_step"] = "order"
     elif step == "order":
         raw = re.sub(r"[^\d]", "", re.sub(r"\.(?=\d{3})", "", text))
         if not raw:
