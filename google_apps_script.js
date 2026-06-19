@@ -82,10 +82,9 @@ function getAllData() {
 function saveMainReport(ss, restaurant, data) {
   let sheet = getOrCreateSheet(ss, restaurant, COLS_MAIN);
   const bw=Number(data.belanja_warung)||0, bp=Number(data.belanja_pasar)||0;
-  // WKB Tuban: carry-over from yesterday = belanja_warung, add it to omzet
-  const omzet = (restaurant === "WKB Tuban")
-    ? (Number(data.omzet)||0) + bw
-    : (Number(data.omzet)||0);
+  // Bot sends correct omzet already (includes carry-over for WKB Tuban)
+  const omzet = Number(data.omzet)||0;
+  // WKB Tuban: only belanja_pasar is real expense; belanja_warung = carry-over tracking only
   const tb = (restaurant === "WKB Tuban") ? bp : (bw + bp);
   const k  = omzet - tb;
   const tgl=data.tanggal||new Date().toISOString().split("T")[0];
