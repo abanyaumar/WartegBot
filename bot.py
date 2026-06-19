@@ -485,49 +485,25 @@ async def main_gofood_action(update, ctx):
     return MAIN_GOFOOD
 
 async def main_gofood_text(update, ctx):
-    """Handle manual GoFood amount input (2-step: gross then net)."""
+    """Handle GoFood input - single step, gross or net based on user choice."""
     text = update.message.text.strip()
     step = ctx.user_data.get("gofood_step", "order")
 
     if text.lower() == "skip":
         ctx.user_data["extracted"]["gofood_order"] = 0
         ctx.user_data["extracted"]["gofood_net"] = 0
-    elif step == "net_only":
-        raw = re.sub(r"[^\\d]", "", re.sub(r"\\.(?=\\d{3})", "", text))
-        if not raw:
-            await update.message.reply_text("Angka tidak valid. Ketik nominal atau <code>skip</code>.", parse_mode="HTML")
-            return MAIN_GOFOOD
-        net_amount = int(raw)
-        ctx.user_data["extracted"]["gofood_order"] = net_amount
-        ctx.user_data["extracted"]["gofood_net"] = net_amount
-        ctx.user_data["gofood_step"] = "order"
-    elif step == "order":
+    else:
         raw = re.sub(r"[^\d]", "", re.sub(r"\.(?=\d{3})", "", text))
         if not raw:
             await update.message.reply_text("Angka tidak valid. Ketik nominal atau <code>skip</code>.", parse_mode="HTML")
             return MAIN_GOFOOD
-        order_amount = int(raw)
-        ctx.user_data["extracted"]["gofood_order"] = order_amount
-        ctx.user_data["gofood_step"] = "net"
-        await update.message.reply_text(
-            "<b>Input GoFood</b>\n\n"
-            "GoFood Gross: <b>Rp " + format(order_amount, ",") + "</b>\n\n"
-            "Langkah 2/2 - Ketik nominal GoFood <b>NET</b> (setelah potongan platform):\n"
-            "<code>135000</code>\n\n"
-            "Atau ketik <code>auto</code> untuk hitung otomatis (QRIS 0.7%).",
-            parse_mode="HTML")
-        return MAIN_GOFOOD
-    elif step == "net":
-        order_amount = ctx.user_data["extracted"].get("gofood_order", 0)
-        if text.lower() == "auto":
-            net_amount = round(order_amount * 0.993)
-        else:
-            raw = re.sub(r"[^\d]", "", re.sub(r"\.(?=\d{3})", "", text))
-            if not raw:
-                await update.message.reply_text("Angka tidak valid. Ketik nominal atau <code>auto</code>.", parse_mode="HTML")
-                return MAIN_GOFOOD
-            net_amount = int(raw)
-        ctx.user_data["extracted"]["gofood_net"] = net_amount
+        amount = int(raw)
+        if step == "order":  # gross input - auto calc net
+            ctx.user_data["extracted"]["gofood_order"] = amount
+            ctx.user_data["extracted"]["gofood_net"] = round(amount * 0.993)
+        else:  # net_only - set both to same value
+            ctx.user_data["extracted"]["gofood_order"] = amount
+            ctx.user_data["extracted"]["gofood_net"] = amount
         ctx.user_data["gofood_step"] = "order"
 
     d = ctx.user_data["extracted"]
