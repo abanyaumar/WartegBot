@@ -51,9 +51,10 @@ def extract_and_audit(image_bytes, restaurant):
     if restaurant == "WKB Tuban":
         wkb_tuban_note = (
             "\nATURAN KHUSUS WKB TUBAN:\n"
-            "- omzet = HANYA total pemasukan tunai per shift (jangan tambahkan saldo/kembalian kemarin)\n"
-            "- Saldo/kembalian kemarin (misal 61.000) -> catat sebagai belanja_warung SAJA\n"
-            "- Contoh: shift total 2.000.000, ada catatan +61.000 saldo kemarin -> omzet=2.000.000, belanja_warung=61.000\n"
+            "- omzet = TOTAL pemasukan (termasuk saldo kemarin). Baca angka TOTAL paling bawah di bagian pemasukan.\n"
+            "- Saldo kemarin juga catat sebagai belanja_warung (untuk tracking)\n"
+            "- Contoh: shift 2.000.000 + saldo kemarin 84.000 = total 2.084.000 -> omzet=2.084.000, belanja_warung=84.000\n"
+            "- keuntungan dihitung sistem: omzet - belanja_pasar\n"
         )
     prompt = (
         "Kamu asisten keuangan DAN auditor untuk cabang " + restaurant + ".\n"
@@ -70,7 +71,7 @@ def extract_and_audit(image_bytes, restaurant):
         "\nATURAN: omzet = pemasukan TUNAI saja. GoFood HARUS dipisah ke gofood_order/gofood_net.\n\n"
         "OUTPUT dua bagian TANPA markdown:\n"
         "JSON_DATA:\n"
-        '{"tanggal":"YYYY-MM-DD","omzet":0,"belanja_warung":0,"belanja_pasar":0,'
+        '{"tanggal":"YYYY-MM-DD (gunakan tahun 2026 jika tahun tidak terbaca jelas)","omzet":0,"belanja_warung":0,"belanja_pasar":0,'
         '"belanja_warung_items":{"lpg":0,"es_batu":0},'
         '"belanja_pasar_items":{"sembako":0,"sayur":0,"ayam":0,"ikan":0,"lain":0},'
         '"gofood_order":0,"gofood_net":0,"catatan":""}\n'
@@ -326,8 +327,8 @@ def keuntungan_calc(restaurant, data):
     bp = data.get("belanja_pasar", 0)
     omzet = data.get("omzet", 0)
     if restaurant == "WKB Tuban":
-        # carry-over = belanja_warung; add it to omzet, use pasar only for expense
-        omzet_adj = omzet + bw
+        # AI already reads total omzet (including carry-over); only belanja_pasar is real expense
+        omzet_adj = omzet
         tb = bp
         k = omzet_adj - tb
     else:
