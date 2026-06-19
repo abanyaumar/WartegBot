@@ -75,7 +75,11 @@ def extract_and_audit(image_bytes, restaurant):
         '"belanja_pasar_items":{"sembako":0,"sayur":0,"ayam":0,"ikan":0,"lain":0},'
         '"gofood_order":0,"gofood_net":0,"catatan":""}\n'
         "AUDIT:\n"
-        "Tulis maks 3 pertanyaan audit spesifik Bahasa Indonesia menggunakan angka konkret. "
+        "Berikan analisis singkat Bahasa Indonesia (maks 4 poin):\n"
+        "1. Ada angka tidak wajar/mencurigakan?\n"
+        "2. Belanja pasar wajar untuk warteg?\n"
+        "3. Ada tulisan tidak terbaca/angka meragukan?\n"
+        "4. VERDICT: BAGUS / PERLU PERHATIAN / RUGI + alasan 1 kalimat.\n"
         "Jika semua wajar tulis: TIDAK ADA CATATAN AUDIT"
     )
     resp = client.models.generate_content(model="models/gemini-2.5-flash-lite", contents=[prompt, img_data])
@@ -289,12 +293,9 @@ def generate_smart_audit(restaurant, current_data, audit_text):
                 verdict = "❌ RUGI"
             lines.append(f"Keuntungan: Rp {cur_k:,} | Verdict: {verdict} (rata-rata: Rp {avg_k:,.0f})")
 
-        enriched = "
-".join(lines)
+        enriched = "\n".join(lines)
         if audit_text:
-            return enriched + "
-
-" + audit_text
+            return enriched + "\n\n" + audit_text
         return enriched
     except Exception as e:
         logger.error("Smart audit error: " + str(e))
