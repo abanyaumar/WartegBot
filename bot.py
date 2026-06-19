@@ -765,6 +765,88 @@ async def gofood_confirm(update, ctx):
     return ConversationHandler.END
 
 # ======= RINGKASAN =======
+def get_period_from_rows(rows):
+    """Determine 10-day period (1/2/3) and month from rows."""
+    if not rows:
+        return None, None
+    # Find dominant month
+    mc = {}
+    for r in rows:
+        d = r.get("date","")
+        if len(d) >= 7:
+            mc[d[:7]] = mc.get(d[:7], 0) + 1
+    if not mc:
+        return None, None
+    month = max(mc, key=mc.get)
+    # Find max day in that month
+    max_day = 0
+    for r in rows:
+        d = r.get("date","")
+        if d[:7] == month and len(d) >= 10:
+            try: max_day = max(max_day, int(d[8:10]))
+            except: pass
+    if max_day <= 10:   return 1, month
+    elif max_day <= 20: return 2, month
+    else:               return 3, month
+
+def calculate_profit_sharing(restaurant, rows):
+    """Build profit sharing section based on which 10-day period we are in."""
+    period, month = get_period_from_rows(rows)
+    if period is None:
+        return ""
+    profit_current = sum(r.get("keuntungan", 0) for r in rows)
+    lines = ["", "====================", "<b>💰 BAGI HASIL:</b>"]
+
+    if period == 1:
+        lines += [
+            "Periode ke-1 (Tgl 1–10)",
+            "Manager → Investor: <b>Rp " + format(profit_current, ",") + "</b>",
+            "<i>(100% profit periode ini)</i>",
+        ]
+    elif period == 2:
+        lines += [
+            "Periode ke-2 (Tgl 11–20)",
+            "Manager → Investor: <b>Rp " + format(profit_current, ",") + "</b>",
+            "<i>(100% profit periode ini)</i>",
+        ]
+    elif period == 3:
+        # Fetch full month (up to 30 rows) to get all 3 periods
+        s_full = fetch_summary(restaurant, days=30)
+        all_rows = s_full.get("rows", []) if s_full else []
+        def day_num(r):
+            try: return int(r.get("date","")[8:10])
+            except: return 0
+        month_rows = [r for r in all_rows if r.get("date","")[:7] == month]
+        p1 = [r for r in month_rows if day_num(r) <= 10]
+        p2 = [r for r in month_rows if 11 <= day_num(r) <= 20]
+        p3 = [r for r in month_rows if day_num(r) >= 21]
+        profit_p1 = sum(r.get("keuntungan", 0) for r in p1)
+        profit_p2 = sum(r.get("keuntungan", 0) for r in p2)
+        profit_p3 = sum(r.get("keuntungan", 0) for r in p3)
+        total_30   = profit_p1 + profit_p2 + profit_p3
+        inv_share  = total_30 // 2
+        already    = profit_p1 + profit_p2  # already transferred by manager
+        balance    = inv_share - already
+        lines += [
+            "Periode ke-3 (Tgl 21–31) — <b>Rekap Bulanan</b>",
+            "",
+            "Profit P1 (1–10)   : Rp " + format(profit_p1, ","),
+            "Profit P2 (11–20)  : Rp " + format(profit_p2, ","),
+            "Profit P3 (21–31)  : Rp " + format(profit_p3, ","),
+            "Total 30 Hari      : <b>Rp " + format(total_30, ",") + "</b>",
+            "",
+            "Bagian Investor (50%): Rp " + format(inv_share, ","),
+            "Sudah ditransfer     : Rp " + format(already, ","),
+            "",
+        ]
+        if balance > 0:
+            lines.append("➡️ Manager transfer ke Investor: <b>Rp " + format(balance, ",") + "</b>")
+        elif balance < 0:
+            lines.append("⬅️ Investor kembalikan ke Manager: <b>Rp " + format(abs(balance), ",") + "</b>")
+        else:
+            lines.append("✅ Sudah seimbang, tidak ada transfer")
+    return "\n".join(lines)
+
 def build_ringkasan_msg(restaurant, s):
     om = s.get("total_omzet",0); gf = s.get("total_gofood_netto",0)
     bl = s.get("total_belanja",0); pe = s.get("total_pengeluaran",0)
@@ -801,6 +883,9 @@ def build_ringkasan_msg(restaurant, s):
         "Total Pengeluaran: Rp " + format(to,","),
         "<b>PROFIT BERSIH: Rp " + format(pr,",") + "</b>",
     ]
+    profit_section = calculate_profit_sharing(restaurant, rows)
+    if profit_section:
+        lines.append(profit_section)
     return "\n".join(lines)
 
 async def ringkasan_start(update, ctx):
