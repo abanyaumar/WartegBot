@@ -435,6 +435,7 @@ async def restaurant_selected(update, ctx):
     kb = [
         [InlineKeyboardButton("Ada GoFood, input manual", callback_data="input_gofood")],
         [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
+        [InlineKeyboardButton("🔄 Analisis Ulang", callback_data="reanalyze")],
     ]
     await q.edit_message_text(
         summary + gofood_info + "\n\n<b>Apakah ada pendapatan GoFood hari ini?</b>",
@@ -445,6 +446,35 @@ async def main_gofood_action(update, ctx):
     """Handle GoFood question after main report is read."""
     q = update.callback_query
     await q.answer()
+    if q.data == "reanalyze":
+        restaurant = ctx.user_data.get("restaurant","")
+        await q.edit_message_text("🔄 Menganalisis ulang laporan " + restaurant + "...")
+        try:
+            data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
+        except Exception as e:
+            await q.edit_message_text("Gagal membaca foto: " + str(e))
+            return ConversationHandler.END
+        if not data:
+            await q.edit_message_text("Data tidak terbaca. Coba foto lebih jelas.")
+            return ConversationHandler.END
+        data["restaurant"] = restaurant
+        ctx.user_data["extracted"] = data
+        ctx.user_data["audit_text"] = audit
+        audit = generate_smart_audit(restaurant, data, audit)
+        summary = fmt(restaurant, data)
+        if audit:
+            summary += "\n\n<b>Catatan Audit AI:</b>\n" + esc(audit)
+        gofood_detected = data.get("gofood_order", 0) > 0
+        gofood_info = ("\n<i>AI mendeteksi GoFood: Rp " + format(data.get("gofood_order",0),",") + "</i>") if gofood_detected else "\n<i>AI tidak mendeteksi GoFood di laporan ini.</i>"
+        kb = [
+            [InlineKeyboardButton("Ada GoFood, input manual", callback_data="input_gofood")],
+            [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
+            [InlineKeyboardButton("🔄 Analisis Ulang", callback_data="reanalyze")],
+        ]
+        await q.edit_message_text(
+            summary + gofood_info + "\n\n<b>Apakah ada pendapatan GoFood hari ini?</b>",
+            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        return MAIN_GOFOOD
     if q.data == "no_gofood":
         ctx.user_data["extracted"]["gofood_order"] = 0
         ctx.user_data["extracted"]["gofood_net"] = 0
@@ -1035,7 +1065,7 @@ def main():
         states={
             SELECT_RESTAURANT: [CallbackQueryHandler(restaurant_selected)],
             MAIN_GOFOOD: [
-                CallbackQueryHandler(main_gofood_action, pattern="^(input_gofood|no_gofood|gf_gross|gf_net)$"),
+                CallbackQueryHandler(main_gofood_action, pattern="^(input_gofood|no_gofood|gf_gross|gf_net|reanalyze)$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, main_gofood_text),
             ],
             CONFIRM_DATA:      [CallbackQueryHandler(confirm_data)],
