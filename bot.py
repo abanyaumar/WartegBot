@@ -864,7 +864,12 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0):
     def drange(lst):
         if not lst: return "-"
         return lst[0].get("date", "-") + " s/d " + lst[-1].get("date", "-")
-    sorted_rows = sorted(rows, key=lambda r: r.get("date", ""))
+    MONTHS_S = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,"Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,"Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+    def parse_row_date(r):
+        p = r.get("date","").split(); 
+        try: return datetime.date(int(p[2]), MONTHS_S.get(p[1],1), int(p[0]))
+        except: return datetime.date(2000,1,1)
+    sorted_rows = sorted(rows, key=parse_row_date)
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
         profit = max(0, prof(sorted_rows) - pengeluaran)
