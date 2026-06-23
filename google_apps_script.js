@@ -153,7 +153,7 @@ function fmtDate(d) {
 function getSummary(restaurant, days, startDateParam) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let totalOmzet=0, totalBelanja=0, totalGofoodNetto=0, totalPengeluaran=0;
-  let startDate="", endDate="";
+  let startDate="", endDate="", endDateStr="9999-12-31";
   const TZ = "Asia/Jakarta";
 
   // Convert date to YYYY-MM-DD string in Jakarta timezone for safe comparison
@@ -187,6 +187,7 @@ function getSummary(restaurant, days, startDateParam) {
     if (target.length > 0) {
       startDate = fmtDate(target[0][0]);
       endDate   = fmtDate(target[target.length-1][0]);
+      endDateStr = toDateStr(target[target.length-1][0]);
     }
   }
 
@@ -203,13 +204,13 @@ function getSummary(restaurant, days, startDateParam) {
     pdata.forEach(function(row){
       const prd = String(row[0]||"").trim();
       let match = false;
-      if (!startDate && !endDate) {
+      if (!startDateParam) {
         match = true; // no filter: include all
       } else if (prd.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        // New format: yyyy-MM-dd — include if date falls within ringkasan range
-        match = prd >= (startDateParam || "") && prd <= (endDate || "9999");
+        // New format: yyyy-MM-dd — include if falls within ringkasan range
+        match = prd >= startDateParam && prd <= endDateStr;
       } else {
-        // Legacy format (e.g. "10 hari", "2026-06") — include always so old data not lost
+        // Legacy format (e.g. "10 hari", "2026-06") — always include
         match = true;
       }
       if (match) totalPengeluaran += Number(row[9])||0;
@@ -268,4 +269,3 @@ function getOrCreateSheet(ss, name, cols) {
 }
 
 function resp(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
-
