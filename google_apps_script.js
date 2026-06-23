@@ -200,28 +200,35 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
 
   // Pengeluaran: filter by periodTag (P1/P2/P3) and month from startDateParam
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
+  let totalPengeluaranP1 = 0, totalPengeluaranP2 = 0, totalPengeluaranP3 = 0;
   if (pengSheet && pengSheet.getLastRow() > 1) {
     const rangeMonth = startDateParam ? startDateParam.substring(0, 7) : null;
     const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
     pdata.forEach(function(row){
       const prd = String(row[0]||"").trim();
-      let match = false;
+      let match = false; let matchTag = null;
       if (!periodTag) {
-        match = true; // no filter: include all
+        match = true;
       } else if (prd.match(/^\d{4}-\d{2}-P[123]$/)) {
-        // New format: YYYY-MM-P1/P2/P3
         const prdMonth = prd.substring(0, 7);
-        const prdTag   = prd.substring(8); // "P1", "P2", or "P3"
+        const prdTag   = prd.substring(8);
         if (periodTag === "P3") {
-          // P3 rekap bulanan: include all periods of that month
           match = prdMonth === rangeMonth;
+          if (match) matchTag = prdTag;
         } else {
           match = prdMonth === rangeMonth && prdTag === periodTag;
+          if (match) matchTag = prdTag;
         }
       } else {
-        match = false; // legacy rows: skip when period filter active
+        match = false;
       }
-      if (match) totalPengeluaran += Number(row[9])||0;
+      if (match) {
+        const amt = Number(row[9])||0;
+        totalPengeluaran += amt;
+        if (matchTag === "P1") totalPengeluaranP1 += amt;
+        else if (matchTag === "P2") totalPengeluaranP2 += amt;
+        else if (matchTag === "P3") totalPengeluaranP3 += amt;
+      }
     });
   }
 
@@ -257,6 +264,9 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
     total_gofood_netto: totalGofoodNetto,
     total_belanja: totalBelanja,
     total_pengeluaran: totalPengeluaran,
+    pengeluaran_p1: totalPengeluaranP1,
+    pengeluaran_p2: totalPengeluaranP2,
+    pengeluaran_p3: totalPengeluaranP3,
     days_counted: days,
     rows: dailyRows
   };

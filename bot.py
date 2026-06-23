@@ -880,7 +880,7 @@ def get_month_and_rows(restaurant, rows):
     )
     return month, month_rows
 
-def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0):
+def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0, pe_p2=0):
     def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
     def drange(lst):
         if not lst: return "-"
@@ -920,14 +920,17 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0):
         profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
         total = profit_p1 + profit_p2 + profit_p3 - pengeluaran
         inv   = total // 2
-        paid  = profit_p1 + profit_p2
+        # paid = what was actually transferred in P1 and P2 (after their pengeluaran deductions)
+        paid_p1 = max(0, profit_p1 - pe_p1)
+        paid_p2 = max(0, profit_p2 - pe_p2)
+        paid  = paid_p1 + paid_p2
         bal   = inv - paid
         lines += [
             "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
-            "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ","),
-            "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ","),
+            "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
+            "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(pe_p2, ",") + ")") if pe_p2 > 0 else ""),
             "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
-            ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
+            ("  Pengeluaran P3: -Rp " + format(pengeluaran - pe_p1 - pe_p2, ",")) if (pengeluaran - pe_p1 - pe_p2) > 0 else "",
             "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
             "Bagian Investor (50%): Rp " + format(inv, ","),
             "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
@@ -942,16 +945,18 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0):
     return "\n".join(lines)
 
 def build_ringkasan_msg(restaurant, s, period=1):
-    pe = s.get("total_pengeluaran", 0)  # from _Pengeluaran sheet (date-filtered)
+    pe    = s.get("total_pengeluaran", 0)
+    pe_p1 = s.get("pengeluaran_p1", 0)
+    pe_p2 = s.get("pengeluaran_p2", 0)
+    pe_p3 = s.get("pengeluaran_p3", 0)
     rows = s.get("rows", [])
-    # Compute totals from filtered daily rows (avoids GoFood/pengeluaran aggregate issues)
     om = sum(r.get("omzet", 0) for r in rows)
     gf = sum(r.get("gofood_net", 0) for r in rows)
     bl = sum(r.get("total_belanja", 0) for r in rows)
     k  = sum(r.get("keuntungan", 0) for r in rows)
-    ti = om + gf          # Total Pemasukan
-    to = bl               # Total Pengeluaran harian (belanja pasar+warung)
-    pr = k - pe           # Profit Bersih = keuntungan - pengeluaran operasional
+    ti = om + gf
+    to = bl
+    pr = k - pe
 
     lines = [
         "<b>Ringkasan 10 Hari - " + restaurant + "</b>",
@@ -959,7 +964,6 @@ def build_ringkasan_msg(restaurant, s, period=1):
         "====================",
     ]
 
-    # Per-day detail
     if rows:
         lines.append("<b>DETAIL PER HARI:</b>")
         for r in rows:
@@ -986,7 +990,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
         total_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
     total_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
     lines += total_lines
-    profit_section = calculate_profit_sharing(restaurant, rows, period, pe)
+    profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2)
     if profit_section:
         lines.append(profit_section)
     return "\n".join(lines)
