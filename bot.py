@@ -921,10 +921,16 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0):
     return "\n".join(lines)
 
 def build_ringkasan_msg(restaurant, s, period=1):
-    om = s.get("total_omzet",0); gf = s.get("total_gofood_netto",0)
-    bl = s.get("total_belanja",0); pe = s.get("total_pengeluaran",0)
-    ti = om + gf; to = bl + pe; pr = ti - to
+    pe = s.get("total_pengeluaran", 0)  # from _Pengeluaran sheet (date-filtered)
     rows = s.get("rows", [])
+    # Compute totals from filtered daily rows (avoids GoFood/pengeluaran aggregate issues)
+    om = sum(r.get("omzet", 0) for r in rows)
+    gf = sum(r.get("gofood_net", 0) for r in rows)
+    bl = sum(r.get("total_belanja", 0) for r in rows)
+    k  = sum(r.get("keuntungan", 0) for r in rows)
+    ti = om + gf          # Total Pemasukan
+    to = bl               # Total Pengeluaran harian (belanja pasar+warung)
+    pr = k - pe           # Profit Bersih = keuntungan - pengeluaran operasional
 
     lines = [
         "<b>Ringkasan 10 Hari - " + restaurant + "</b>",
@@ -950,12 +956,15 @@ def build_ringkasan_msg(restaurant, s, period=1):
         lines.append("")
         lines.append("====================")
 
-    lines += [
+    total_lines = [
         "<b>TOTAL:</b>",
-        "Total Pemasukan : Rp " + format(ti,","),
-        "Total Pengeluaran: Rp " + format(to,","),
-        "<b>PROFIT BERSIH: Rp " + format(pr,",") + "</b>",
+        "Total Pemasukan : Rp " + format(ti, ","),
+        "Total Belanja Harian: Rp " + format(to, ","),
     ]
+    if pe > 0:
+        total_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
+    total_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
+    lines += total_lines
     profit_section = calculate_profit_sharing(restaurant, rows, period, pe)
     if profit_section:
         lines.append(profit_section)
