@@ -859,7 +859,7 @@ def get_month_and_rows(restaurant, rows):
     )
     return month, month_rows
 
-def calculate_profit_sharing(restaurant, rows, period=1):
+def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0):
     def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
     def drange(lst):
         if not lst: return "-"
@@ -867,20 +867,22 @@ def calculate_profit_sharing(restaurant, rows, period=1):
     sorted_rows = sorted(rows, key=lambda r: r.get("date", ""))
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
-        profit = prof(sorted_rows)
+        profit = max(0, prof(sorted_rows) - pengeluaran)
         lines += [
             "Periode ke-1 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
+            ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
-            "<i>(100% profit periode ini)</i>",
+            "<i>(100% profit bersih periode ini)</i>",
         ]
     elif period == 2:
-        profit = prof(sorted_rows)
+        profit = max(0, prof(sorted_rows) - pengeluaran)
         lines += [
             "Periode ke-2 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
+            ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
-            "<i>(100% profit periode ini)</i>",
+            "<i>(100% profit bersih periode ini)</i>",
         ]
     else:
         month, month_rows = get_month_and_rows(restaurant, rows)
@@ -890,7 +892,7 @@ def calculate_profit_sharing(restaurant, rows, period=1):
         p2 = month_rows[10:20]
         p3 = month_rows[20:]
         profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
-        total = profit_p1 + profit_p2 + profit_p3
+        total = profit_p1 + profit_p2 + profit_p3 - pengeluaran
         inv   = total // 2
         paid  = profit_p1 + profit_p2
         bal   = inv - paid
@@ -899,7 +901,8 @@ def calculate_profit_sharing(restaurant, rows, period=1):
             "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ","),
             "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ","),
             "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
-            "Total Bulanan: <b>Rp " + format(total, ",") + "</b>", "",
+            ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
+            "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
             "Bagian Investor (50%): Rp " + format(inv, ","),
             "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
         ]
@@ -909,6 +912,7 @@ def calculate_profit_sharing(restaurant, rows, period=1):
             lines.append("\u2b05\ufe0f Investor kembalikan ke Manager: <b>Rp " + format(abs(bal), ",") + "</b>")
         else:
             lines.append("\u2705 Sudah seimbang, tidak ada transfer")
+    lines = [l for l in lines if l != ""]  # remove empty strings from conditional
     return "\n".join(lines)
 
 def build_ringkasan_msg(restaurant, s, period=1):
@@ -947,7 +951,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
         "Total Pengeluaran: Rp " + format(to,","),
         "<b>PROFIT BERSIH: Rp " + format(pr,",") + "</b>",
     ]
-    profit_section = calculate_profit_sharing(restaurant, rows, period)
+    profit_section = calculate_profit_sharing(restaurant, rows, period, pe)
     if profit_section:
         lines.append(profit_section)
     return "\n".join(lines)
