@@ -763,8 +763,10 @@ async def peng_confirm(update, ctx):
     if q.data == "cancel_peng":
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     peng_data = ctx.user_data.get("peng_data", {})
-    # Stamp periode as yyyy-MM so ringkasan can filter pengeluaran by month
-    peng_data["periode"] = datetime.date.today().strftime("%Y-%m-%d")
+    # Tag with period: YYYY-MM-P1 (day 1-10), YYYY-MM-P2 (11-20), YYYY-MM-P3 (21+)
+    _today = datetime.date.today(); _d = _today.day
+    _ptag = "P1" if _d <= 10 else ("P2" if _d <= 20 else "P3")
+    peng_data["periode"] = _today.strftime("%Y-%m") + "-" + _ptag
     ok = save_to_sheets(ctx.user_data.get("peng_restaurant",""), peng_data, "pengeluaran")
     await q.edit_message_text("<b>Pengeluaran tersimpan!</b>" if ok else "Gagal simpan.", parse_mode="HTML")
     return ConversationHandler.END

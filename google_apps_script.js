@@ -197,21 +197,35 @@ function getSummary(restaurant, days, startDateParam) {
     gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
   }
 
-  // Pengeluaran: filter by date range (periode stored as yyyy-MM-dd)
+  // Pengeluaran: filter by period tag (YYYY-MM-P1/P2/P3)
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   if (pengSheet && pengSheet.getLastRow() > 1) {
+    // Derive period from startDateParam day
+    let periodTag = null;
+    let rangeMonth = null;
+    if (startDateParam) {
+      const startDay = parseInt(startDateParam.split("-")[2]);
+      periodTag = startDay <= 10 ? "P1" : (startDay <= 20 ? "P2" : "P3");
+      rangeMonth = startDateParam.substring(0, 7); // YYYY-MM
+    }
     const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
     pdata.forEach(function(row){
       const prd = String(row[0]||"").trim();
       let match = false;
       if (!startDateParam) {
         match = true; // no filter: include all
-      } else if (prd.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        // New format: yyyy-MM-dd — include if falls within ringkasan range
-        match = prd >= startDateParam && prd <= endDateStr;
+      } else if (prd.match(/^\d{4}-\d{2}-P[123]$/)) {
+        // New format: YYYY-MM-P1/P2/P3
+        const prdMonth = prd.substring(0, 7);
+        const prdPeriod = prd.substring(8);
+        if (periodTag === "P3") {
+          // P3 full-month reconciliation: include all periods of that month
+          match = prdMonth === rangeMonth;
+        } else {
+          match = prdMonth === rangeMonth && prdPeriod === periodTag;
+        }
       } else {
-        // Legacy format (e.g. "10 hari", "2026-06") — only include when no date filter active
-        match = !startDateParam;
+        match = false; // legacy format: exclude when date filter active
       }
       if (match) totalPengeluaran += Number(row[9])||0;
     });
