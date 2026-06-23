@@ -210,8 +210,8 @@ function getSummary(restaurant, days, startDateParam) {
         // New format: yyyy-MM-dd — include if falls within ringkasan range
         match = prd >= startDateParam && prd <= endDateStr;
       } else {
-        // Legacy format (e.g. "10 hari", "2026-06") — always include
-        match = true;
+        // Legacy format (e.g. "10 hari", "2026-06") — only include when no date filter active
+        match = !startDateParam;
       }
       if (match) totalPengeluaran += Number(row[9])||0;
     });
