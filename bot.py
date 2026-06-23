@@ -1,5 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-import os, json, logging, re, html, datetime
+import os, json, logging, re, html, datetime, time
 from google import genai
 from google.genai import types
 import requests
@@ -19,6 +19,15 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 APPS_SCRIPT_URL = os.getenv("APPS_SCRIPT_URL")
 client = genai.Client(api_key=GEMINI_API_KEY)
+def gemini_generate(contents, retries=4, delay=5):
+    for i in range(retries):
+        try:
+            return client.models.generate_content(model="gemini-2.5-flash", contents=contents)
+        except Exception as e:
+            if i < retries - 1 and ("503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e)):
+                time.sleep(delay * (i + 1))
+            else:
+                raise
 
 RESTAURANTS = [
     "Pisangan Lama","Kebagusan","Pejaten","Kranggan",
@@ -83,7 +92,7 @@ def extract_and_audit(image_bytes, restaurant):
         "4. VERDICT: BAGUS / PERLU PERHATIAN / RUGI + alasan 1 kalimat.\n"
         "Jika semua wajar tulis: TIDAK ADA CATATAN AUDIT"
     )
-    resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img_data])
+    resp = gemini_generate(contents=[prompt, img_data])
     text = resp.text.strip()
     data = {}
     m = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
@@ -132,7 +141,7 @@ def analyze_belanja_detail(images_bytes_list, restaurant, main_data):
         "TEMUAN AUDIT:\n- [temuan]\nJika tidak ada: TIDAK ADA TEMUAN"
     )
     try:
-        resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt] + parts)
+        resp = gemini_generate(contents=[prompt] + parts)
         return resp.text.strip()
     except Exception as e:
         logger.error("Belanja detail error: " + str(e))
@@ -195,9 +204,9 @@ def extract_pengeluaran(content_data, restaurant, is_image=False):
     try:
         if is_image:
             img = types.Part.from_bytes(data=content_data, mime_type="image/jpeg")
-            resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
+            resp = gemini_generate(contents=[prompt, img])
         else:
-            resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt + "\n\nData:\n" + content_data])
+            resp = gemini_generate(contents=[prompt + "\n\nData:\n" + content_data])
         text = resp.text.strip()
         m = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
         if not m:
@@ -223,7 +232,7 @@ def extract_gofood_report(image_bytes, restaurant):
         'OUTPUT JSON: {"periode":"","total_bruto":0,"total_netto":0,"jumlah_transaksi":0,"catatan":""}'
     )
     try:
-        resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
+        resp = gemini_generate(contents=[prompt, img])
         m = re.search(r"\{.*?\}", resp.text.strip(), re.DOTALL)
         if m:
             d = json.loads(m.group())
