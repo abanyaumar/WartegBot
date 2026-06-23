@@ -19,12 +19,12 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
 APPS_SCRIPT_URL = os.getenv("APPS_SCRIPT_URL")
 client = genai.Client(api_key=GEMINI_API_KEY)
-def gemini_generate(contents, retries=4, delay=5):
+def gemini_generate(contents, retries=6, delay=3):
     for i in range(retries):
         try:
             return client.models.generate_content(model="gemini-2.5-flash", contents=contents)
         except Exception as e:
-            if i < retries - 1 and ("503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e)):
+            if i < retries - 1 and ("503" in str(e) or "UNAVAILABLE" in str(e) or "429" in str(e) or "500" in str(e)):
                 time.sleep(delay * (i + 1))
             else:
                 raise
@@ -425,7 +425,11 @@ async def restaurant_selected(update, ctx):
     try:
         data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
     except Exception as e:
-        await q.edit_message_text("Gagal membaca foto: " + str(e))
+        err = str(e)
+        if "503" in err or "UNAVAILABLE" in err:
+            await q.edit_message_text("⚠️ Gemini sedang sibuk. Coba kirim foto lagi dalam 1-2 menit.")
+        else:
+            await q.edit_message_text("Gagal membaca foto: " + err)
         return ConversationHandler.END
     if not data:
         await q.edit_message_text("Data tidak terbaca. Coba foto lebih jelas.")
@@ -463,7 +467,11 @@ async def main_gofood_action(update, ctx):
         try:
             data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
         except Exception as e:
-            await q.edit_message_text("Gagal membaca foto: " + str(e))
+            err = str(e)
+            if "503" in err or "UNAVAILABLE" in err:
+                await q.edit_message_text("⚠️ Gemini sedang sibuk. Coba kirim foto lagi dalam 1-2 menit.")
+            else:
+                await q.edit_message_text("Gagal membaca foto: " + err)
             return ConversationHandler.END
         if not data:
             await q.edit_message_text("Data tidak terbaca. Coba foto lebih jelas.")
