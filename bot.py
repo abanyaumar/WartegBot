@@ -1016,6 +1016,8 @@ async def ringkasan_period_selected(update, ctx):
     if q.data not in period_map:
         await q.edit_message_text("Pilihan tidak valid."); return ConversationHandler.END
     ctx.user_data["rsum_period"] = period_map[q.data]
+    ptag_map = {1: "P1", 2: "P2", 3: "P3"}
+    ctx.user_data["rsum_ptag"] = ptag_map[period_map[q.data]]
     restaurant = ctx.user_data.get("rsum_restaurant","")
     label = ["","Periode 1 (Hari 1-10)","Periode 2 (Hari 11-20)","Periode 3 (Rekap Bulanan)"][period_map[q.data]]
     period_num = period_map[q.data]
@@ -1073,7 +1075,8 @@ async def ringkasan_date_input(update, ctx):
             parse_mode="HTML")
         return RSUM_DATE
     await update.message.reply_text("Mengambil data " + restaurant + " dari " + text + "...")
-    s = fetch_summary(restaurant, days=10, start_date=start_date)
+    ptag = ctx.user_data.get("rsum_ptag", "")
+    s = fetch_summary(restaurant, days=10, start_date=start_date, period_tag=ptag if ptag else None)
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
