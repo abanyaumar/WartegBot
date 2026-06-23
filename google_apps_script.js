@@ -154,13 +154,22 @@ function getSummary(restaurant, days, startDateParam) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let totalOmzet=0, totalBelanja=0, totalGofoodNetto=0, totalPengeluaran=0;
   let startDate="", endDate="";
+  const TZ = "Asia/Jakarta";
 
-  const cutoff = startDateParam ? new Date(startDateParam) : null;
+  // Convert date to YYYY-MM-DD string in Jakarta timezone for safe comparison
+  function toDateStr(d) {
+    if (!d) return "";
+    return Utilities.formatDate(d instanceof Date ? d : new Date(d), TZ, "yyyy-MM-dd");
+  }
 
   function getTargetRows(data) {
+    // Sort ascending by date
     data.sort(function(a,b){ return new Date(a[0]) - new Date(b[0]); });
-    if (cutoff) {
-      const filtered = data.filter(function(row){ return row[0] && new Date(row[0]) >= cutoff; });
+    if (startDateParam) {
+      // Compare as Jakarta date strings to avoid UTC offset issues
+      const filtered = data.filter(function(row){
+        return row[0] && toDateStr(row[0]) >= startDateParam;
+      });
       return filtered.slice(0, days);
     } else {
       return data.slice(Math.max(0, data.length - days));
@@ -187,10 +196,32 @@ function getSummary(restaurant, days, startDateParam) {
     gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
   }
 
+  // Pengeluaran: filter by months covered in the date range
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   if (pengSheet && pengSheet.getLastRow() > 1) {
-    const pdata = pengSheet.getRange(2,10,pengSheet.getLastRow()-1,1).getValues();
-    pdata.forEach(function(row){ totalPengeluaran += Number(row[0])||0; });
+    // Build set of months in range (e.g. ["Jun 2026", "Jul 2026"])
+    const monthsInRange = {};
+    if (startDate && endDate) {
+      const d1 = new Date(startDateParam || toDateStr(new Date()));
+      // Add all months from startDate to endDate
+      const d2 = new Date(endDate);
+      let cur = new Date(d1.getFullYear(), d1.getMonth(), 1);
+      while (cur <= d2) {
+        const key = Utilities.formatDate(cur, TZ, "MMM yyyy");      // e.g. "Jun 2026"
+        const key2 = Utilities.formatDate(cur, TZ, "MMMM yyyy");    // e.g. "Juni 2026"
+        const key3 = Utilities.formatDate(cur, TZ, "yyyy-MM");      // e.g. "2026-06"
+        monthsInRange[key] = true; monthsInRange[key2] = true; monthsInRange[key3] = true;
+        cur.setMonth(cur.getMonth() + 1);
+      }
+    }
+    const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
+    pdata.forEach(function(row){
+      const prd = String(row[0]||"");
+      // Check if periode matches any month in range, or include all if no date range
+      const match = Object.keys(monthsInRange).length === 0 ||
+        Object.keys(monthsInRange).some(function(m){ return prd.indexOf(m) >= 0; });
+      if (match) totalPengeluaran += Number(row[9])||0;
+    });
   }
 
   const periode = (startDate && endDate) ? (startDate + " - " + endDate) : "-";
@@ -201,20 +232,20 @@ function getSummary(restaurant, days, startDateParam) {
     const data2 = mainSheet2.getRange(2,1,mainSheet2.getLastRow()-1,8).getValues();
     const target2 = getTargetRows(data2);
     target2.forEach(function(row){
-      const rawDate = row[0] ? new Date(row[0]) : new Date(0);
       dailyRows.push({
         date:           fmtDate(row[0]),
-        _rawDate:       rawDate,
+        _sortKey:       toDateStr(row[0]),
         omzet:          Number(row[1])||0,
         belanja_warung: Number(row[2])||0,
         belanja_pasar:  Number(row[3])||0,
         total_belanja:  (Number(row[2])||0)+(Number(row[3])||0),
         keuntungan:     Number(row[5])||0,
-        gofood_net:     Number(row[7])||0
+        gofood_net:     Math.round(Number(row[7])||0)
       });
     });
-    dailyRows.sort(function(a,b){ return a._rawDate - b._rawDate; });
-    dailyRows.forEach(function(r){ delete r._rawDate; });
+    // Sort by YYYY-MM-DD string = correct chronological order
+    dailyRows.sort(function(a,b){ return a._sortKey > b._sortKey ? 1 : -1; });
+    dailyRows.forEach(function(r){ delete r._sortKey; });
   }
 
   return {
