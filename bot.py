@@ -1,5 +1,5 @@
 ﻿# -*- coding: utf-8 -*-
-import os, json, logging, re, html, datetime, time
+import os, json, logging, re, html, datetime, time, asyncio
 from google import genai
 from google.genai import types
 import requests
@@ -28,6 +28,36 @@ def gemini_generate(contents, retries=6, delay=3):
                 time.sleep(delay * (i + 1))
             else:
                 raise
+
+# ======= GEMINI QUEUE =======
+# Serializes Gemini calls to prevent 503 overload when multiple users upload simultaneously
+gemini_queue = asyncio.Queue()
+
+async def gemini_queue_worker():
+    """Background worker: processes one Gemini/extract job at a time."""
+    while True:
+        job = await gemini_queue.get()
+        try:
+            loop = asyncio.get_event_loop()
+            if job.get("type") == "extract":
+                result = await loop.run_in_executor(
+                    None, lambda: extract_and_audit(job["photo_bytes"], job["restaurant"])
+                )
+            else:
+                result = await loop.run_in_executor(None, lambda: gemini_generate(job["contents"]))
+            job["future"].set_result(result)
+        except Exception as e:
+            job["future"].set_exception(e)
+        finally:
+            gemini_queue.task_done()
+        await asyncio.sleep(1)  # 1s gap between Gemini calls
+
+async def gemini_generate_queued(contents):
+    """Queue a raw Gemini call and await the result."""
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+    await gemini_queue.put({"contents": contents, "future": future})
+    return await future
 
 RESTAURANTS = [
     "Pisangan Lama","Kebagusan","Pejaten","Kranggan",
@@ -421,9 +451,19 @@ async def restaurant_selected(update, ctx):
     restaurant = q.data.split("|",1)[1]
     ctx.user_data["restaurant"] = restaurant
     ctx.user_data["extracted"] = {"restaurant": restaurant}
-    await q.edit_message_text("Membaca dan menganalisis laporan " + restaurant + "...")
+    # Show queue position if others are waiting
+    waiting = gemini_queue.qsize()
+    if waiting > 0:
+        await q.edit_message_text("📋 Antrian: <b>" + str(waiting + 1) + " foto</b> menunggu diproses. Harap tunggu...", parse_mode="HTML")
+    else:
+        await q.edit_message_text("Membaca dan menganalisis laporan " + restaurant + "...")
     try:
-        data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
+        loop = asyncio.get_event_loop()
+        # Enqueue this job - worker processes one at a time
+        future = loop.create_future()
+        photo_bytes = ctx.user_data["photo_bytes"]
+        await gemini_queue.put({"type": "extract", "photo_bytes": photo_bytes, "restaurant": restaurant, "future": future})
+        data, audit = await future
     except Exception as e:
         err = str(e)
         if "503" in err or "UNAVAILABLE" in err:
@@ -463,9 +503,12 @@ async def main_gofood_action(update, ctx):
     await q.answer()
     if q.data == "reanalyze":
         restaurant = ctx.user_data.get("restaurant","")
-        await q.edit_message_text("ðŸ”„ Menganalisis ulang laporan " + restaurant + "...")
+        await q.edit_message_text("🔄 Menganalisis ulang laporan " + restaurant + "...")
         try:
-            data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
+            loop = asyncio.get_event_loop()
+            future = loop.create_future()
+            await gemini_queue.put({"type": "extract", "photo_bytes": ctx.user_data["photo_bytes"], "restaurant": restaurant, "future": future})
+            data, audit = await future
         except Exception as e:
             err = str(e)
             if "503" in err or "UNAVAILABLE" in err:
@@ -1123,6 +1166,8 @@ def main():
             BotCommand("ringkasan10hari", "Ringkasan dan profit bersih 10 hari"),
             BotCommand("cancel",          "Batalkan operasi saat ini"),
         ])
+        # Start background queue worker for Gemini calls
+        asyncio.create_task(gemini_queue_worker())
 
     app = Application.builder().token(TELEGRAM_TOKEN).request(request).post_init(post_init).build()
 
