@@ -37,8 +37,8 @@ RESTAURANTS = [
 
 # States
 SELECT_RESTAURANT, CONFIRM_DATA, EDIT_FIELD, VALIDATE_BELANJA, MAIN_GOFOOD = range(5)
-PENG_SELECT, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 7)
-GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(7, 11)
+PENG_SELECT, PENG_PERIOD, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 8)
+GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(8, 12)
 RSUM_SELECT, RSUM_PERIOD, RSUM_DATE = 11, 13, 12
 
 def esc(text):
@@ -732,6 +732,23 @@ async def peng_restaurant_selected(update, ctx):
     ctx.user_data["peng_restaurant"] = restaurant
     await q.edit_message_text(
         "<b>" + restaurant + " - Pengeluaran 10 Hari</b>\n\n"
+        "Kirim FOTO nota atau KETIK langsung:\n"
+        "<code>Beras: 250000\nPLN: 150000\nPDAM: 75000\nWifi: 100000\nSampah: 50000\nKasbon: 200000</code>",
+        parse_mode="HTML")
+    return PENG_WAIT_INPUT
+
+
+async def peng_period_selected(update, ctx):
+    q = update.callback_query; await q.answer()
+    if q.data == "cancel":
+        await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
+    ptag = q.data.split("_")[1]  # "P1", "P2", or "P3"
+    ctx.user_data["peng_period"] = ptag
+    restaurant = ctx.user_data.get("peng_restaurant","")
+    today = datetime.date.today()
+    ctx.user_data["peng_periode_tag"] = today.strftime("%Y-%m") + "-" + ptag
+    await q.edit_message_text(
+        "<b>" + restaurant + " - Pengeluaran " + ptag + "</b>\n\n"
         "Kirim FOTO nota atau KETIK langsung:\n"
         "<code>Beras: 250000\nPLN: 150000\nPDAM: 75000\nWifi: 100000\nSampah: 50000\nKasbon: 200000</code>",
         parse_mode="HTML")
