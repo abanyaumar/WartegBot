@@ -322,19 +322,19 @@ def generate_smart_audit(restaurant, current_data, audit_text):
         if avg_omzet > 0:
             pct = (cur_omzet - avg_omzet) / avg_omzet * 100
             if pct < -30:
-                lines.append(f"âš ï¸ Omzet hari ini Rp {cur_omzet:,} lebih rendah {abs(pct):.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
+                lines.append(f"⚠️ Omzet hari ini Rp {cur_omzet:,} lebih rendah {abs(pct):.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
             elif pct > 50:
-                lines.append(f"ðŸ“ˆ Omzet hari ini Rp {cur_omzet:,} lebih tinggi {pct:.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
+                lines.append(f"📈 Omzet hari ini Rp {cur_omzet:,} lebih tinggi {pct:.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
             else:
-                lines.append(f"âœ… Omzet normal (rata-rata 7 hari: Rp {avg_omzet:,.0f})")
+                lines.append(f"✅ Omzet normal (rata-rata 7 hari: Rp {avg_omzet:,.0f})")
         # Profitability verdict
         if cur_k is not None:
             if cur_k >= avg_k * 0.9:
-                verdict = "âœ… BAGUS"
+                verdict = "✅ BAGUS"
             elif cur_k >= 0:
-                verdict = "âš ï¸ PERLU PERHATIAN"
+                verdict = "⚠️ PERLU PERHATIAN"
             else:
-                verdict = "âŒ RUGI"
+                verdict = "❌ RUGI"
             lines.append(f"Keuntungan: Rp {cur_k:,} | Verdict: {verdict} (rata-rata: Rp {avg_k:,.0f})")
 
         enriched = "\n".join(lines)
@@ -490,7 +490,7 @@ async def restaurant_selected(update, ctx):
     kb = [
         [InlineKeyboardButton("Ada GoFood, input manual", callback_data="input_gofood")],
         [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
-        [InlineKeyboardButton("ðŸ”„ Analisis Ulang", callback_data="reanalyze")],
+        [InlineKeyboardButton("🔄 Analisis Ulang", callback_data="reanalyze")],
     ]
     await q.edit_message_text(
         summary + gofood_info + "\n\n<b>Apakah ada pendapatan GoFood hari ini?</b>",
@@ -531,7 +531,7 @@ async def main_gofood_action(update, ctx):
         kb = [
             [InlineKeyboardButton("Ada GoFood, input manual", callback_data="input_gofood")],
             [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
-            [InlineKeyboardButton("ðŸ”„ Analisis Ulang", callback_data="reanalyze")],
+            [InlineKeyboardButton("🔄 Analisis Ulang", callback_data="reanalyze")],
         ]
         await q.edit_message_text(
             summary + gofood_info + "\n\n<b>Apakah ada pendapatan GoFood hari ini?</b>",
