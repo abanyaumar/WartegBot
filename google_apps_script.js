@@ -196,30 +196,22 @@ function getSummary(restaurant, days, startDateParam) {
     gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
   }
 
-  // Pengeluaran: filter by months covered in the date range
+  // Pengeluaran: filter by date range (periode stored as yyyy-MM-dd)
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   if (pengSheet && pengSheet.getLastRow() > 1) {
-    // Build set of months in range (e.g. ["Jun 2026", "Jul 2026"])
-    const monthsInRange = {};
-    if (startDate && endDate) {
-      const d1 = new Date(startDateParam || toDateStr(new Date()));
-      // Add all months from startDate to endDate
-      const d2 = new Date(endDate);
-      let cur = new Date(d1.getFullYear(), d1.getMonth(), 1);
-      while (cur <= d2) {
-        const key = Utilities.formatDate(cur, TZ, "MMM yyyy");      // e.g. "Jun 2026"
-        const key2 = Utilities.formatDate(cur, TZ, "MMMM yyyy");    // e.g. "Juni 2026"
-        const key3 = Utilities.formatDate(cur, TZ, "yyyy-MM");      // e.g. "2026-06"
-        monthsInRange[key] = true; monthsInRange[key2] = true; monthsInRange[key3] = true;
-        cur.setMonth(cur.getMonth() + 1);
-      }
-    }
     const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
     pdata.forEach(function(row){
-      const prd = String(row[0]||"");
-      // Check if periode matches any month in range, or include all if no date range
-      const match = Object.keys(monthsInRange).length === 0 ||
-        Object.keys(monthsInRange).some(function(m){ return prd.indexOf(m) >= 0; });
+      const prd = String(row[0]||"").trim();
+      let match = false;
+      if (!startDate && !endDate) {
+        match = true; // no filter: include all
+      } else if (prd.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // New format: yyyy-MM-dd — include if date falls within ringkasan range
+        match = prd >= (startDateParam || "") && prd <= (endDate || "9999");
+      } else {
+        // Legacy format (e.g. "10 hari", "2026-06") — include always so old data not lost
+        match = true;
+      }
       if (match) totalPengeluaran += Number(row[9])||0;
     });
   }

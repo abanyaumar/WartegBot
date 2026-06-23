@@ -764,7 +764,7 @@ async def peng_confirm(update, ctx):
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     peng_data = ctx.user_data.get("peng_data", {})
     # Stamp periode as yyyy-MM so ringkasan can filter pengeluaran by month
-    peng_data["periode"] = datetime.date.today().strftime("%Y-%m")
+    peng_data["periode"] = datetime.date.today().strftime("%Y-%m-%d")
     ok = save_to_sheets(ctx.user_data.get("peng_restaurant",""), peng_data, "pengeluaran")
     await q.edit_message_text("<b>Pengeluaran tersimpan!</b>" if ok else "Gagal simpan.", parse_mode="HTML")
     return ConversationHandler.END
