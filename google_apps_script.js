@@ -201,8 +201,10 @@ function getSummary(restaurant, days, startDateParam) {
     const data2 = mainSheet2.getRange(2,1,mainSheet2.getLastRow()-1,8).getValues();
     const target2 = getTargetRows(data2);
     target2.forEach(function(row){
+      const rawDate = row[0] ? new Date(row[0]) : new Date(0);
       dailyRows.push({
         date:           fmtDate(row[0]),
+        _rawDate:       rawDate,
         omzet:          Number(row[1])||0,
         belanja_warung: Number(row[2])||0,
         belanja_pasar:  Number(row[3])||0,
@@ -211,7 +213,8 @@ function getSummary(restaurant, days, startDateParam) {
         gofood_net:     Number(row[7])||0
       });
     });
-    dailyRows.sort(function(a,b){ return a.date > b.date ? 1 : -1; });
+    dailyRows.sort(function(a,b){ return a._rawDate - b._rawDate; });
+    dailyRows.forEach(function(r){ delete r._rawDate; });
   }
 
   return {
@@ -242,5 +245,4 @@ function getOrCreateSheet(ss, name, cols) {
 }
 
 function resp(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
-
 
