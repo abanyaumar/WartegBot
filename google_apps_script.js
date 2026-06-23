@@ -167,11 +167,14 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
     // Sort ascending by date
     data.sort(function(a,b){ return new Date(a[0]) - new Date(b[0]); });
     if (startDateParam) {
-      // Compare as Jakarta date strings to avoid UTC offset issues
-      const filtered = data.filter(function(row){
-        return row[0] && toDateStr(row[0]) >= startDateParam;
+      // Filter rows within [startDate, startDate + (days-1) calendar days]
+      var start = new Date(startDateParam + "T00:00:00+07:00");
+      var end   = new Date(start.getTime() + (days - 1) * 24 * 60 * 60 * 1000);
+      var endStr = Utilities.formatDate(end, TZ, "yyyy-MM-dd");
+      return data.filter(function(row){
+        var ds = row[0] ? toDateStr(row[0]) : "";
+        return ds >= startDateParam && ds <= endStr;
       });
-      return filtered.slice(0, days);
     } else {
       return data.slice(Math.max(0, data.length - days));
     }
