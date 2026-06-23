@@ -26,7 +26,8 @@ function doGet(e) {
       const restaurant = e.parameter.restaurant;
       const days = parseInt(e.parameter.days) || 10;
       const startDate = e.parameter.startDate || null;
-      return resp(getSummary(restaurant, days, startDate));
+      const periodTag = e.parameter.periodTag || null;
+      return resp(getSummary(restaurant, days, startDate, periodTag));
     }
     if (action === "getData") { return resp(getData(e.parameter.restaurant)); }
     if (action === "getAllData") { return resp(getAllData()); }
@@ -150,7 +151,7 @@ function fmtDate(d) {
   return Utilities.formatDate(dt, "Asia/Jakarta", "d MMM yyyy");
 }
 
-function getSummary(restaurant, days, startDateParam) {
+function getSummary(restaurant, days, startDateParam, periodTag) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let totalOmzet=0, totalBelanja=0, totalGofoodNetto=0, totalPengeluaran=0;
   let startDate="", endDate="", endDateStr="9999-12-31";
@@ -197,35 +198,28 @@ function getSummary(restaurant, days, startDateParam) {
     gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
   }
 
-  // Pengeluaran: filter by period tag (YYYY-MM-P1/P2/P3)
+  // Pengeluaran: filter by periodTag (P1/P2/P3) and month from startDateParam
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   if (pengSheet && pengSheet.getLastRow() > 1) {
-    // Derive period from startDateParam day
-    let periodTag = null;
-    let rangeMonth = null;
-    if (startDateParam) {
-      const startDay = parseInt(startDateParam.split("-")[2]);
-      periodTag = startDay <= 10 ? "P1" : (startDay <= 20 ? "P2" : "P3");
-      rangeMonth = startDateParam.substring(0, 7); // YYYY-MM
-    }
+    const rangeMonth = startDateParam ? startDateParam.substring(0, 7) : null;
     const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
     pdata.forEach(function(row){
       const prd = String(row[0]||"").trim();
       let match = false;
-      if (!startDateParam) {
+      if (!periodTag) {
         match = true; // no filter: include all
       } else if (prd.match(/^\d{4}-\d{2}-P[123]$/)) {
         // New format: YYYY-MM-P1/P2/P3
         const prdMonth = prd.substring(0, 7);
-        const prdPeriod = prd.substring(8);
+        const prdTag   = prd.substring(8); // "P1", "P2", or "P3"
         if (periodTag === "P3") {
-          // P3 full-month reconciliation: include all periods of that month
+          // P3 rekap bulanan: include all periods of that month
           match = prdMonth === rangeMonth;
         } else {
-          match = prdMonth === rangeMonth && prdPeriod === periodTag;
+          match = prdMonth === rangeMonth && prdTag === periodTag;
         }
       } else {
-        match = false; // legacy format: exclude when date filter active
+        match = false; // legacy rows: skip when period filter active
       }
       if (match) totalPengeluaran += Number(row[9])||0;
     });
