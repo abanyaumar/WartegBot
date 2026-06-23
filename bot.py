@@ -253,11 +253,13 @@ def save_to_sheets(restaurant, data, data_type="laporan_harian"):
         logger.error("Sheets error: " + str(e))
         return False
 
-def fetch_summary(restaurant, days=10, start_date=None):
+def fetch_summary(restaurant, days=10, start_date=None, period_tag=None):
     try:
         params = {"action":"summary","restaurant":restaurant,"days":str(days)}
         if start_date:
             params["startDate"] = start_date
+        if period_tag:
+            params["periodTag"] = period_tag
         r = requests.get(APPS_SCRIPT_URL, params=params, timeout=20)
         if r.status_code == 200: return r.json()
     except Exception as e:
