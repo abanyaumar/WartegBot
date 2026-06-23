@@ -1003,10 +1003,17 @@ def build_ringkasan_msg(restaurant, s, period=1):
     rows = s.get("rows", [])
     om = sum(r.get("omzet", 0) for r in rows)
     gf = sum(r.get("gofood_net", 0) for r in rows)
+    bw = sum(r.get("belanja_warung", 0) for r in rows)
     bl = sum(r.get("total_belanja", 0) for r in rows)
     k  = sum(r.get("keuntungan", 0) for r in rows)
-    ti = om + gf
-    to = bl
+    # WKB Tuban: omzet already includes carry-over, belanja_warung is carry-over tracking only
+    # → Total Pemasukan = omzet only, Total Belanja = belanja_pasar only
+    if restaurant == "WKB Tuban":
+        ti = om
+        to = bl - bw
+    else:
+        ti = om + gf
+        to = bl
     pr = k - pe
 
     lines = [
