@@ -155,30 +155,38 @@ function getSummary(restaurant, days, startDateParam) {
   let totalOmzet=0, totalBelanja=0, totalGofoodNetto=0, totalPengeluaran=0;
   let startDate="", endDate="";
 
-  // Main sheet: omzet + belanja only (no gofood here)
+  const cutoff = startDateParam ? new Date(startDateParam) : null;
+
+  function getTargetRows(data) {
+    data.sort(function(a,b){ return new Date(a[0]) - new Date(b[0]); });
+    if (cutoff) {
+      const filtered = data.filter(function(row){ return row[0] && new Date(row[0]) >= cutoff; });
+      return filtered.slice(0, days);
+    } else {
+      return data.slice(Math.max(0, data.length - days));
+    }
+  }
+
   const mainSheet = ss.getSheetByName(restaurant);
   if (mainSheet && mainSheet.getLastRow() > 1) {
     const data = mainSheet.getRange(2,1,mainSheet.getLastRow()-1,8).getValues();
-    data.sort(function(a,b){ return new Date(b[0])-new Date(a[0]); });
-    const target = data.slice(0, days);
+    const target = getTargetRows(data);
     target.forEach(function(row){
       totalOmzet   += Number(row[1])||0;
       totalBelanja += (Number(row[2])||0) + (Number(row[3])||0);
     });
     if (target.length > 0) {
-      endDate   = fmtDate(target[0][0]);
-      startDate = fmtDate(target[target.length-1][0]);
+      startDate = fmtDate(target[0][0]);
+      endDate   = fmtDate(target[target.length-1][0]);
     }
   }
 
-  // GoFood netto from dedicated GoFood sheet
   const gofoodSheet = ss.getSheetByName(restaurant + "_GoFood");
   if (gofoodSheet && gofoodSheet.getLastRow() > 1) {
     const gdata = gofoodSheet.getRange(2,1,gofoodSheet.getLastRow()-1,3).getValues();
     gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
   }
 
-  // Pengeluaran total from col 10
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   if (pengSheet && pengSheet.getLastRow() > 1) {
     const pdata = pengSheet.getRange(2,10,pengSheet.getLastRow()-1,1).getValues();
@@ -187,13 +195,12 @@ function getSummary(restaurant, days, startDateParam) {
 
   const periode = (startDate && endDate) ? (startDate + " - " + endDate) : "-";
 
-  // Build per-day rows for detailed display
   let dailyRows = [];
   const mainSheet2 = ss.getSheetByName(restaurant);
   if (mainSheet2 && mainSheet2.getLastRow() > 1) {
     const data2 = mainSheet2.getRange(2,1,mainSheet2.getLastRow()-1,8).getValues();
-    data2.sort(function(a,b){ return new Date(b[0])-new Date(a[0]); });
-    data2.slice(0, days).forEach(function(row){
+    const target2 = getTargetRows(data2);
+    target2.forEach(function(row){
       dailyRows.push({
         date:           fmtDate(row[0]),
         omzet:          Number(row[1])||0,
