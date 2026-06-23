@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 import os, json, logging, re, html, datetime
 from google import genai
 from google.genai import types
@@ -83,7 +83,7 @@ def extract_and_audit(image_bytes, restaurant):
         "4. VERDICT: BAGUS / PERLU PERHATIAN / RUGI + alasan 1 kalimat.\n"
         "Jika semua wajar tulis: TIDAK ADA CATATAN AUDIT"
     )
-    resp = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt, img_data])
+    resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img_data])
     text = resp.text.strip()
     data = {}
     m = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
@@ -132,7 +132,7 @@ def analyze_belanja_detail(images_bytes_list, restaurant, main_data):
         "TEMUAN AUDIT:\n- [temuan]\nJika tidak ada: TIDAK ADA TEMUAN"
     )
     try:
-        resp = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt] + parts)
+        resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt] + parts)
         return resp.text.strip()
     except Exception as e:
         logger.error("Belanja detail error: " + str(e))
@@ -195,9 +195,9 @@ def extract_pengeluaran(content_data, restaurant, is_image=False):
     try:
         if is_image:
             img = types.Part.from_bytes(data=content_data, mime_type="image/jpeg")
-            resp = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt, img])
+            resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
         else:
-            resp = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt + "\n\nData:\n" + content_data])
+            resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt + "\n\nData:\n" + content_data])
         text = resp.text.strip()
         m = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
         if not m:
@@ -223,7 +223,7 @@ def extract_gofood_report(image_bytes, restaurant):
         'OUTPUT JSON: {"periode":"","total_bruto":0,"total_netto":0,"jumlah_transaksi":0,"catatan":""}'
     )
     try:
-        resp = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt, img])
+        resp = client.models.generate_content(model="gemini-2.5-flash", contents=[prompt, img])
         m = re.search(r"\{.*?\}", resp.text.strip(), re.DOTALL)
         if m:
             d = json.loads(m.group())
@@ -281,19 +281,19 @@ def generate_smart_audit(restaurant, current_data, audit_text):
         if avg_omzet > 0:
             pct = (cur_omzet - avg_omzet) / avg_omzet * 100
             if pct < -30:
-                lines.append(f"⚠️ Omzet hari ini Rp {cur_omzet:,} lebih rendah {abs(pct):.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
+                lines.append(f"âš ï¸ Omzet hari ini Rp {cur_omzet:,} lebih rendah {abs(pct):.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
             elif pct > 50:
-                lines.append(f"📈 Omzet hari ini Rp {cur_omzet:,} lebih tinggi {pct:.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
+                lines.append(f"ðŸ“ˆ Omzet hari ini Rp {cur_omzet:,} lebih tinggi {pct:.0f}% dari rata-rata 7 hari (Rp {avg_omzet:,.0f})")
             else:
-                lines.append(f"✅ Omzet normal (rata-rata 7 hari: Rp {avg_omzet:,.0f})")
+                lines.append(f"âœ… Omzet normal (rata-rata 7 hari: Rp {avg_omzet:,.0f})")
         # Profitability verdict
         if cur_k is not None:
             if cur_k >= avg_k * 0.9:
-                verdict = "✅ BAGUS"
+                verdict = "âœ… BAGUS"
             elif cur_k >= 0:
-                verdict = "⚠️ PERLU PERHATIAN"
+                verdict = "âš ï¸ PERLU PERHATIAN"
             else:
-                verdict = "❌ RUGI"
+                verdict = "âŒ RUGI"
             lines.append(f"Keuntungan: Rp {cur_k:,} | Verdict: {verdict} (rata-rata: Rp {avg_k:,.0f})")
 
         enriched = "\n".join(lines)
@@ -435,7 +435,7 @@ async def restaurant_selected(update, ctx):
     kb = [
         [InlineKeyboardButton("Ada GoFood, input manual", callback_data="input_gofood")],
         [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
-        [InlineKeyboardButton("🔄 Analisis Ulang", callback_data="reanalyze")],
+        [InlineKeyboardButton("ðŸ”„ Analisis Ulang", callback_data="reanalyze")],
     ]
     await q.edit_message_text(
         summary + gofood_info + "\n\n<b>Apakah ada pendapatan GoFood hari ini?</b>",
@@ -448,7 +448,7 @@ async def main_gofood_action(update, ctx):
     await q.answer()
     if q.data == "reanalyze":
         restaurant = ctx.user_data.get("restaurant","")
-        await q.edit_message_text("🔄 Menganalisis ulang laporan " + restaurant + "...")
+        await q.edit_message_text("ðŸ”„ Menganalisis ulang laporan " + restaurant + "...")
         try:
             data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
         except Exception as e:
@@ -469,7 +469,7 @@ async def main_gofood_action(update, ctx):
         kb = [
             [InlineKeyboardButton("Ada GoFood, input manual", callback_data="input_gofood")],
             [InlineKeyboardButton("Tidak ada GoFood", callback_data="no_gofood")],
-            [InlineKeyboardButton("🔄 Analisis Ulang", callback_data="reanalyze")],
+            [InlineKeyboardButton("ðŸ”„ Analisis Ulang", callback_data="reanalyze")],
         ]
         await q.edit_message_text(
             summary + gofood_info + "\n\n<b>Apakah ada pendapatan GoFood hari ini?</b>",
