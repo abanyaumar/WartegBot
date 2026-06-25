@@ -1083,7 +1083,14 @@ def build_ringkasan_msg(restaurant, s, period=1):
     return parts
 
 async def ringkasan_start(update, ctx):
-    await update.message.reply_text("<b>Ringkasan 10 Hari</b>\n\nPilih cabang:", parse_mode="HTML", reply_markup=restaurant_keyboard())
+    logger.info("ringkasan_start called user=%s", update.effective_user.id if update.effective_user else "?")
+    try:
+        await update.message.reply_text(
+            "<b>Ringkasan 10 Hari</b>\n\nPilih cabang:",
+            parse_mode="HTML", reply_markup=restaurant_keyboard())
+    except Exception as e:
+        logger.error("ringkasan_start error: %s", e)
+        raise
     return RSUM_SELECT
 
 async def ringkasan_restaurant_selected(update, ctx):
@@ -1274,6 +1281,7 @@ def main():
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
         per_message=False,
     )
 
