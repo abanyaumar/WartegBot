@@ -99,7 +99,9 @@ function saveMainReport(ss, restaurant, data) {
     });
     if(dup) return resp({status:"duplicate",message:"Data "+tgl+" sudah ada"});
   }
-  sheet.appendRow([new Date(tgl),omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
+  // Parse tgl as Jakarta midnight (not UTC midnight) to avoid date shift
+  const tglDate = new Date(tgl + "T00:00:00+07:00");
+  sheet.appendRow([tglDate,omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
   const nr=sheet.getLastRow();
   sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY");
   sheet.getRange(nr,2,1,7).setNumberFormat("#,##0");
@@ -168,7 +170,11 @@ function saveBelanjaDetail(ss, restaurant, data) {
 function fmtDate(d) {
   if (!d) return "";
   var dt = (d instanceof Date) ? d : new Date(d);
-  return Utilities.formatDate(dt, "Asia/Jakarta", "d MMM yyyy");
+  // Format in Jakarta TZ to get the correct local date
+  var ds = Utilities.formatDate(dt, "Asia/Jakarta", "yyyy-MM-dd");
+  var p = ds.split("-");
+  var MNAMES = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Ags","Sep","Okt","Nov","Des"];
+  return parseInt(p[2]) + " " + MNAMES[parseInt(p[1])-1] + " " + p[0];
 }
 
 function getSummary(restaurant, days, startDateParam, periodTag) {
