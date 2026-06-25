@@ -31,7 +31,8 @@ def gemini_generate(contents, retries=6, delay=3):
 
 # ======= GEMINI QUEUE =======
 # Serializes Gemini calls to prevent 503 overload when multiple users upload simultaneously
-gemini_queue = asyncio.Queue()
+# NOTE: gemini_queue is initialized in post_init (must be inside a running event loop)
+gemini_queue = None
 
 async def gemini_queue_worker():
     """Background worker: processes one Gemini/extract job at a time."""
@@ -452,18 +453,20 @@ async def restaurant_selected(update, ctx):
     ctx.user_data["restaurant"] = restaurant
     ctx.user_data["extracted"] = {"restaurant": restaurant}
     # Show queue position if others are waiting
-    waiting = gemini_queue.qsize()
+    waiting = gemini_queue.qsize() if gemini_queue else 0
     if waiting > 0:
         await q.edit_message_text("📋 Antrian: <b>" + str(waiting + 1) + " foto</b> menunggu diproses. Harap tunggu...", parse_mode="HTML")
     else:
         await q.edit_message_text("Membaca dan menganalisis laporan " + restaurant + "...")
     try:
         loop = asyncio.get_event_loop()
-        # Enqueue this job - worker processes one at a time
         future = loop.create_future()
         photo_bytes = ctx.user_data["photo_bytes"]
-        await gemini_queue.put({"type": "extract", "photo_bytes": photo_bytes, "restaurant": restaurant, "future": future})
-        data, audit = await future
+        if gemini_queue:
+            await gemini_queue.put({"type": "extract", "photo_bytes": photo_bytes, "restaurant": restaurant, "future": future})
+            data, audit = await future
+        else:
+            data, audit = extract_and_audit(photo_bytes, restaurant)
     except Exception as e:
         err = str(e)
         if "503" in err or "UNAVAILABLE" in err:
@@ -507,8 +510,11 @@ async def main_gofood_action(update, ctx):
         try:
             loop = asyncio.get_event_loop()
             future = loop.create_future()
-            await gemini_queue.put({"type": "extract", "photo_bytes": ctx.user_data["photo_bytes"], "restaurant": restaurant, "future": future})
-            data, audit = await future
+            if gemini_queue:
+                await gemini_queue.put({"type": "extract", "photo_bytes": ctx.user_data["photo_bytes"], "restaurant": restaurant, "future": future})
+                data, audit = await future
+            else:
+                data, audit = extract_and_audit(ctx.user_data["photo_bytes"], restaurant)
         except Exception as e:
             err = str(e)
             if "503" in err or "UNAVAILABLE" in err:
@@ -1191,6 +1197,8 @@ def main():
     request = HTTPXRequest(connect_timeout=60, read_timeout=60, write_timeout=60, pool_timeout=60)
 
     async def post_init(application):
+        global gemini_queue
+        gemini_queue = asyncio.Queue()  # must be created inside running event loop
         await application.bot.set_my_commands([
             BotCommand("start",           "Mulai / info bot"),
             BotCommand("help",            "Panduan lengkap"),
