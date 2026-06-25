@@ -100,7 +100,7 @@ function saveMainReport(ss, restaurant, data) {
     if(dup) return resp({status:"duplicate",message:"Data "+tgl+" sudah ada"});
   }
   // Parse tgl as Jakarta midnight (not UTC midnight) to avoid date shift
-  const tglDate = new Date(tgl + "T00:00:00+07:00");
+  const tglDate = new Date(tgl);
   sheet.appendRow([tglDate,omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
   const nr=sheet.getLastRow();
   sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY");
