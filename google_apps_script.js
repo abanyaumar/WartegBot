@@ -89,18 +89,19 @@ function saveMainReport(ss, restaurant, data) {
   const tb = (restaurant === "WKB Tuban") ? bp : (bw + bp);
   const k  = omzet - tb;
   const tgl=data.tanggal||new Date().toISOString().split("T")[0];
+  // Store 1 day early — matches historical storage convention; fmtDate adds +1 for display
+  const storedTgl = prevDay(tgl);
   const lastRow=sheet.getLastRow();
   if (lastRow>1) {
     const dates=sheet.getRange(2,1,lastRow-1,1).getValues();
     const dup=dates.some(function(r){
       if(!r[0]) return false;
       var ex=(r[0] instanceof Date)?Utilities.formatDate(r[0],"Asia/Jakarta","yyyy-MM-dd"):String(r[0]).substring(0,10);
-      return ex===tgl;
+      return ex===storedTgl;
     });
     if(dup) return resp({status:"duplicate",message:"Data "+tgl+" sudah ada"});
   }
-  // Parse tgl as Jakarta midnight (not UTC midnight) to avoid date shift
-  const tglDate = new Date(tgl);
+  const tglDate = new Date(storedTgl);
   sheet.appendRow([tglDate,omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
   const nr=sheet.getLastRow();
   sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY");
@@ -139,7 +140,8 @@ function saveGofood(ss, restaurant, data) {
   if (data.tanggal) {
     const mainSheet = ss.getSheetByName(restaurant);
     if (mainSheet && mainSheet.getLastRow() > 1) {
-      const tgl = String(data.tanggal).substring(0, 10);
+      // Stored dates are 1 day early — compare against prevDay(tanggal)
+      const tgl = prevDay(String(data.tanggal).substring(0, 10));
       const dates = mainSheet.getRange(2, 1, mainSheet.getLastRow()-1, 1).getValues();
       for (let i = 0; i < dates.length; i++) {
         const rowDate = dates[i][0];
@@ -167,14 +169,22 @@ function saveBelanjaDetail(ss, restaurant, data) {
   return resp({status:"success",type:"belanja_detail",restaurant:restaurant});
 }
 
+// All dates in Google Sheet are stored 1 day early (convention from historical data).
+// fmtDate adds +1 day so the displayed date matches the actual operational date.
 function fmtDate(d) {
   if (!d) return "";
   var dt = (d instanceof Date) ? d : new Date(d);
-  // Format in Jakarta TZ to get the correct local date
+  // Add 1 day to compensate for 1-day-early storage convention
+  dt = new Date(dt.getTime() + 86400000);
   var ds = Utilities.formatDate(dt, "Asia/Jakarta", "yyyy-MM-dd");
   var p = ds.split("-");
   var MNAMES = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Ags","Sep","Okt","Nov","Des"];
   return parseInt(p[2]) + " " + MNAMES[parseInt(p[1])-1] + " " + p[0];
+}
+
+// Returns the previous day of a YYYY-MM-DD string (for 1-day-early storage convention)
+function prevDay(ymd) {
+  return Utilities.formatDate(new Date(new Date(ymd + "T12:00:00Z").getTime() - 86400000), "UTC", "yyyy-MM-dd");
 }
 
 function getSummary(restaurant, days, startDateParam, periodTag) {
@@ -193,13 +203,14 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
     // Sort ascending by date
     data.sort(function(a,b){ return new Date(a[0]) - new Date(b[0]); });
     if (startDateParam) {
-      // Filter rows within exactly [startDate, startDate + (days-1) calendar days]
-      var startMs = new Date(startDateParam + "T00:00:00+07:00").getTime();
-      var endMs   = startMs + (days - 1) * 24 * 60 * 60 * 1000;
-      var endStr  = Utilities.formatDate(new Date(endMs), TZ, "yyyy-MM-dd");
+      // User provides correct display dates; stored dates are 1 day early, so adjust range
+      var adjStartMs = new Date(startDateParam + "T12:00:00Z").getTime() - 86400000;
+      var adjStart   = Utilities.formatDate(new Date(adjStartMs), "UTC", "yyyy-MM-dd");
+      var adjEndMs   = adjStartMs + (days - 1) * 86400000;
+      var adjEnd     = Utilities.formatDate(new Date(adjEndMs), "UTC", "yyyy-MM-dd");
       return data.filter(function(row){
         var ds = row[0] ? toDateStr(row[0]) : "";
-        return ds >= startDateParam && ds <= endStr;
+        return ds >= adjStart && ds <= adjEnd;
       });
     } else {
       return data.slice(Math.max(0, data.length - days));
