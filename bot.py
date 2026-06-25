@@ -919,20 +919,32 @@ async def gofood_confirm(update, ctx):
 
 # ======= RINGKASAN =======
 def get_month_and_rows(restaurant, rows):
+    """Find the dominant month from rows and return all rows for that month."""
     if not rows:
         return None, []
+    MONTHS_S = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,"Jun":6,
+                "Jul":7,"Ags":8,"Aug":8,"Sep":9,"Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+    def row_ym(r):
+        # date format: "24 Jun 2026" -> "2026-06"
+        p = r.get("date","").split()
+        if len(p) >= 3:
+            try:
+                return "%s-%02d" % (p[2], MONTHS_S.get(p[1], 0))
+            except: pass
+        return ""
     mc = {}
     for r in rows:
-        d = r.get("date", "")
-        if len(d) >= 7:
-            mc[d[:7]] = mc.get(d[:7], 0) + 1
+        ym = row_ym(r)
+        if ym:
+            mc[ym] = mc.get(ym, 0) + 1
     if not mc:
         return None, []
     month = max(mc, key=mc.get)
+    # Fetch full month data (31 days covers any month)
     s_full = fetch_summary(restaurant, days=31)
     all_rows = s_full.get("rows", []) if s_full else []
     month_rows = sorted(
-        [r for r in all_rows if r.get("date", "")[:7] == month],
+        [r for r in all_rows if row_ym(r) == month],
         key=lambda r: r.get("date", "")
     )
     return month, month_rows
