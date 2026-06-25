@@ -996,6 +996,7 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     return "\n".join(lines)
 
 def build_ringkasan_msg(restaurant, s, period=1):
+    """Returns a list of message parts to send (split to stay under Telegram 4096 limit)."""
     pe    = s.get("total_pengeluaran", 0)
     pe_p1 = s.get("pengeluaran_p1", 0)
     pe_p2 = s.get("pengeluaran_p2", 0)
@@ -1006,8 +1007,6 @@ def build_ringkasan_msg(restaurant, s, period=1):
     bw = sum(r.get("belanja_warung", 0) for r in rows)
     bl = sum(r.get("total_belanja", 0) for r in rows)
     k  = sum(r.get("keuntungan", 0) for r in rows)
-    # WKB Tuban: omzet already includes carry-over, belanja_warung is carry-over tracking only
-    # → Total Pemasukan = omzet only, Total Belanja = belanja_pasar only
     if restaurant == "WKB Tuban":
         ti = om
         to = bl - bw
@@ -1016,43 +1015,66 @@ def build_ringkasan_msg(restaurant, s, period=1):
         to = bl
     pr = k - pe
 
-    lines = [
+    header = [
         "<b>Ringkasan " + ("Bulanan" if period == 3 else "10 Hari") + " - " + restaurant + "</b>",
         "Periode: <b>" + s.get("periode","-") + "</b>",
         "====================",
     ]
 
-    # P3 = monthly recap: skip per-day detail to avoid Telegram 4096 char limit
-    if rows and period != 3:
-        lines.append("<b>DETAIL PER HARI:</b>")
+    # Build daily detail rows — each day is a small chunk
+    day_lines = []
+    if rows:
+        day_lines.append("<b>DETAIL PER HARI:</b>")
         for r in rows:
-            d = r.get("date","?")
+            d    = r.get("date","?")
             r_om = r.get("omzet", 0)
             r_gf = r.get("gofood_net", 0)
             r_bl = r.get("total_belanja", 0)
             r_k  = r.get("keuntungan", 0)
-            r_in = r_om + r_gf
-            lines.append("")
-            lines.append("<b>" + d + "</b>")
-            lines.append("  Pemasukan : Rp " + format(r_in, ",") + ("  (GoFood: Rp " + format(r_gf,",") + ")" if r_gf > 0 else ""))
-            lines.append("  Pengeluaran: Rp " + format(r_bl, ","))
-            lines.append("  Keuntungan: <b>Rp " + format(r_k, ",") + "</b>")
-        lines.append("")
-        lines.append("====================")
+            r_in = r_om + (0 if restaurant == "WKB Tuban" else r_gf)
+            day_lines.append("")
+            day_lines.append("<b>" + d + "</b>")
+            day_lines.append("  Pemasukan : Rp " + format(r_in, ",") + ("  (GoFood: Rp " + format(r_gf,",") + ")" if r_gf > 0 and restaurant != "WKB Tuban" else ""))
+            day_lines.append("  Pengeluaran: Rp " + format(r_bl, ","))
+            day_lines.append("  Keuntungan: <b>Rp " + format(r_k, ",") + "</b>")
+        day_lines.append("")
+        day_lines.append("====================")
 
-    total_lines = [
+    summary_lines = [
         "<b>TOTAL:</b>",
         "Total Pemasukan : Rp " + format(ti, ","),
         "Total Belanja Harian: Rp " + format(to, ","),
     ]
     if pe > 0:
-        total_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
-    total_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
-    lines += total_lines
+        summary_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
+    summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
     profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2)
     if profit_section:
-        lines.append(profit_section)
-    return "\n".join(lines)
+        summary_lines.append(profit_section)
+
+    # Pack into messages ≤ 4000 chars each
+    parts = []
+    def flush(lines):
+        if lines:
+            parts.append("\n".join(lines))
+
+    current = header[:]
+    for line in day_lines:
+        if len("\n".join(current)) + len(line) + 1 > 3900:
+            flush(current)
+            current = [line]
+        else:
+            current.append(line)
+    # Attach summary to last chunk if it fits, else new message
+    summary_text = "\n".join(summary_lines)
+    if len("\n".join(current)) + len(summary_text) + 1 > 3900:
+        flush(current)
+        parts.append(summary_text)
+    else:
+        current += summary_lines
+        flush(current)
+
+    return parts
 
 async def ringkasan_start(update, ctx):
     await update.message.reply_text("<b>Ringkasan 10 Hari</b>\n\nPilih cabang:", parse_mode="HTML", reply_markup=restaurant_keyboard())
@@ -1150,25 +1172,10 @@ async def ringkasan_date_input(update, ctx):
     return ConversationHandler.END
 
 async def send_ringkasan(send_fn, restaurant, s, period):
-    """Send ringkasan, splitting into multiple messages if too long."""
-    msg = build_ringkasan_msg(restaurant, s, period)
-    if len(msg) <= 4000:
-        await send_fn(msg, parse_mode="HTML")
-    else:
-        # Split at the BAGI HASIL section
-        split_marker = "\n====================\n\U0001f4b0"
-        idx = msg.find(split_marker)
-        if idx != -1:
-            part1 = msg[:idx]
-            part2 = msg[idx+1:]  # skip leading newline
-            await send_fn(part1, parse_mode="HTML")
-            await send_fn(part2, parse_mode="HTML")
-        else:
-            # Fallback: split at 4000 chars on a newline boundary
-            cut = msg.rfind("\n", 0, 4000)
-            await send_fn(msg[:cut], parse_mode="HTML")
-            await send_fn(msg[cut+1:], parse_mode="HTML")
-
+    """Send ringkasan as one or more messages (each ≤ 4000 chars)."""
+    parts = build_ringkasan_msg(restaurant, s, period)
+    for part in parts:
+        await send_fn(part, parse_mode="HTML")
 
 
 async def error_handler(update, context):
