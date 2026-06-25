@@ -985,12 +985,12 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             "<i>(100% profit bersih periode ini)</i>",
         ]
     else:
-        month, month_rows = get_month_and_rows(restaurant, rows)
-        if not month_rows:
-            month_rows = sorted_rows
-        p1 = month_rows[:10]
-        p2 = month_rows[10:20]
-        p3 = month_rows[20:]
+        # P1 = first 10 operational days, P2 = next 10, P3 = remaining
+        # sorted_rows already sorted chronologically — do NOT filter by month
+        # (periods can span month boundaries, e.g. 25 May - 4 Jun = P1)
+        p1 = sorted_rows[:10]
+        p2 = sorted_rows[10:20]
+        p3 = sorted_rows[20:]
         profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
         total = profit_p1 + profit_p2 + profit_p3 - pengeluaran
         inv   = total // 2
