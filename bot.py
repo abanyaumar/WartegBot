@@ -932,6 +932,11 @@ def get_month_and_rows(restaurant, rows):
                 return "%s-%02d" % (p[2], MONTHS_S.get(p[1], 0))
             except: pass
         return ""
+    def row_date_key(r):
+        # Sort key: parse "d MMM yyyy" -> datetime.date for correct chronological order
+        p = r.get("date","").split()
+        try: return datetime.date(int(p[2]), MONTHS_S.get(p[1],1), int(p[0]))
+        except: return datetime.date(2000,1,1)
     mc = {}
     for r in rows:
         ym = row_ym(r)
@@ -945,7 +950,7 @@ def get_month_and_rows(restaurant, rows):
     all_rows = s_full.get("rows", []) if s_full else []
     month_rows = sorted(
         [r for r in all_rows if row_ym(r) == month],
-        key=lambda r: r.get("date", "")
+        key=row_date_key  # correct chronological sort, not alphabetical
     )
     return month, month_rows
 

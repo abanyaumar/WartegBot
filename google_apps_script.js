@@ -132,6 +132,26 @@ function saveGofood(ss, restaurant, data) {
   const nr=sheet.getLastRow();
   sheet.getRange(nr,2,1,3).setNumberFormat("#,##0");
   if(nr%2===0) sheet.getRange(nr,1,1,COLS_GOFOOD.length).setBackground("#E8F5E9");
+
+  // Also update GoFood_Net (column H) in main sheet for the matching date
+  if (data.tanggal) {
+    const mainSheet = ss.getSheetByName(restaurant);
+    if (mainSheet && mainSheet.getLastRow() > 1) {
+      const tgl = String(data.tanggal).substring(0, 10);
+      const dates = mainSheet.getRange(2, 1, mainSheet.getLastRow()-1, 1).getValues();
+      for (let i = 0; i < dates.length; i++) {
+        const rowDate = dates[i][0];
+        const rowDateStr = (rowDate instanceof Date)
+          ? Utilities.formatDate(rowDate, "Asia/Jakarta", "yyyy-MM-dd")
+          : String(rowDate).substring(0, 10);
+        if (rowDateStr === tgl) {
+          mainSheet.getRange(i + 2, 8).setValue(Number(data.total_netto) || 0);
+          break;
+        }
+      }
+    }
+  }
+
   return resp({status:"success",type:"gofood",restaurant:restaurant});
 }
 
@@ -211,7 +231,9 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
       const prd = String(row[0]||"").trim();
       let match = false; let matchTag = null;
       if (!periodTag) {
+        // No filter — include all rows; still parse P1/P2/P3 tag from data for breakdown
         match = true;
+        if (prd.match(/^\d{4}-\d{2}-P[123]$/)) matchTag = prd.substring(8);
       } else if (prd.match(/^\d{4}-\d{2}-P[123]$/)) {
         const prdMonth = prd.substring(0, 7);
         const prdTag   = prd.substring(8);
