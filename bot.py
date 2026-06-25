@@ -1017,12 +1017,13 @@ def build_ringkasan_msg(restaurant, s, period=1):
     pr = k - pe
 
     lines = [
-        "<b>Ringkasan 10 Hari - " + restaurant + "</b>",
+        "<b>Ringkasan " + ("Bulanan" if period == 3 else "10 Hari") + " - " + restaurant + "</b>",
         "Periode: <b>" + s.get("periode","-") + "</b>",
         "====================",
     ]
 
-    if rows:
+    # P3 = monthly recap: skip per-day detail to avoid Telegram 4096 char limit
+    if rows and period != 3:
         lines.append("<b>DETAIL PER HARI:</b>")
         for r in rows:
             d = r.get("date","?")
@@ -1114,7 +1115,7 @@ async def ringkasan_date_option_selected(update, ctx):
         s = fetch_summary(restaurant, days=days)
         if not s or s.get("status") == "error":
             await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
-        await q.edit_message_text(build_ringkasan_msg(restaurant, s, period), parse_mode="HTML")
+        await send_ringkasan(q.message.reply_text, restaurant, s, period)
         return ConversationHandler.END
     if q.data == "rsum_manual":
         await q.edit_message_text(
@@ -1145,12 +1146,30 @@ async def ringkasan_date_input(update, ctx):
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
     period = ctx.user_data.get("rsum_period", 1)
-    await update.message.reply_text(build_ringkasan_msg(restaurant, s, period), parse_mode="HTML")
+    await send_ringkasan(update.message.reply_text, restaurant, s, period)
     return ConversationHandler.END
 
-async def cancel(update, ctx):
-    await update.message.reply_text("Dibatalkan.")
-    return ConversationHandler.END
+async def send_ringkasan(send_fn, restaurant, s, period):
+    """Send ringkasan, splitting into multiple messages if too long."""
+    msg = build_ringkasan_msg(restaurant, s, period)
+    if len(msg) <= 4000:
+        await send_fn(msg, parse_mode="HTML")
+    else:
+        # Split at the BAGI HASIL section
+        split_marker = "\n====================\n\U0001f4b0"
+        idx = msg.find(split_marker)
+        if idx != -1:
+            part1 = msg[:idx]
+            part2 = msg[idx+1:]  # skip leading newline
+            await send_fn(part1, parse_mode="HTML")
+            await send_fn(part2, parse_mode="HTML")
+        else:
+            # Fallback: split at 4000 chars on a newline boundary
+            cut = msg.rfind("\n", 0, 4000)
+            await send_fn(msg[:cut], parse_mode="HTML")
+            await send_fn(msg[cut+1:], parse_mode="HTML")
+
+
 
 async def error_handler(update, context):
     import traceback
