@@ -1184,6 +1184,10 @@ async def send_ringkasan(send_fn, restaurant, s, period):
         await send_fn(part, parse_mode="HTML")
 
 
+async def cancel(update, ctx):
+    await update.message.reply_text("Operasi dibatalkan.")
+    return ConversationHandler.END
+
 async def error_handler(update, context):
     import traceback
     logger.error("Exception: %s", context.error)
