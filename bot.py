@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import os, json, logging, re, html, datetime, time, asyncio
 from google import genai
 from google.genai import types
