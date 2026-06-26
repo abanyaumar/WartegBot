@@ -956,6 +956,7 @@ def get_month_and_rows(restaurant, rows):
 
 def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0, pe_p2=0, kasbon_total=0):
     def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
+    def gf(lst):   return sum(r.get("gofood_net", 0) for r in lst)
     def drange(lst):
         if not lst: return "-"
         return lst[0].get("date", "-") + " s/d " + lst[-1].get("date", "-")
@@ -967,19 +968,23 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     sorted_rows = sorted(rows, key=parse_row_date)
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
-        profit = max(0, prof(sorted_rows) - pengeluaran)
+        gofood_total = gf(sorted_rows)
+        profit = max(0, prof(sorted_rows) + gofood_total - pengeluaran)
         lines += [
             "Periode ke-1 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
+            ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
             ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
         ]
     elif period == 2:
-        profit = max(0, prof(sorted_rows) - pengeluaran)
+        gofood_total = gf(sorted_rows)
+        profit = max(0, prof(sorted_rows) + gofood_total - pengeluaran)
         lines += [
             "Periode ke-2 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
+            ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
             ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
@@ -992,9 +997,11 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         p2 = sorted_rows[10:20]
         p3 = sorted_rows[20:]
         profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
-        total = profit_p1 + profit_p2 + profit_p3 - pengeluaran
+        # GoFood is settled at P3 reconciliation (manager holds GoFood until month-end)
+        gofood_total = gf(sorted_rows)
+        total = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
         pe_p3 = pengeluaran - pe_p1 - pe_p2
-        # paid = what was actually transferred in P1 and P2 (after their pengeluaran deductions)
+        # paid = what was actually transferred to investor in P1 and P2 (warung only, no GoFood)
         paid_p1 = max(0, profit_p1 - pe_p1)
         paid_p2 = max(0, profit_p2 - pe_p2)
         paid  = paid_p1 + paid_p2
@@ -1015,8 +1022,9 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(p2_pe_display, ",") + ")") if p2_pe_display > 0 else "") + ("  <i>+ kasbon Rp " + format(kasbon_total, ",") + "</i>" if kasbon_total > 0 else ""),
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  Pengeluaran P3: -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
+                ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
-                "<i>\U0001f4cb Kasbon Manager (P2): Rp " + format(kasbon_total, ",") + "</i>",
+                "<i>\U0001f4cb Kasbon Manager: Rp " + format(kasbon_total, ",") + "</i>",
                 "<i>  \u2192 Dipotong dari bagian Manager, bukan biaya bersama</i>",
                 "Dasar Pembagian (excl. kasbon): Rp " + format(total_for_split, ","),
                 "Bagian Investor (50%): <b>Rp " + format(inv, ",") + "</b>",
@@ -1032,6 +1040,7 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(pe_p2, ",") + ")") if pe_p2 > 0 else ""),
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  Pengeluaran P3: -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
+                ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
                 "Bagian Investor (50%): Rp " + format(inv, ","),
                 "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",

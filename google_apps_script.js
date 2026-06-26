@@ -169,6 +169,14 @@ function saveBelanjaDetail(ss, restaurant, data) {
   return resp({status:"success",type:"belanja_detail",restaurant:restaurant});
 }
 
+// Returns the next calendar month as "YYYY-MM" (e.g. "2026-05" → "2026-06")
+function nextMonth(yyyymm) {
+  var parts = yyyymm.split("-");
+  var y = parseInt(parts[0]), m = parseInt(parts[1]);
+  if (m === 12) return (y + 1) + "-01";
+  return y + "-" + String(m + 1).padStart(2, "0");
+}
+
 // All dates in Google Sheet are stored 1 day early (convention from historical data).
 // fmtDate adds +1 day so the displayed date matches the actual operational date.
 function fmtDate(d) {
@@ -256,7 +264,10 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
         const prdMonth = prd.substring(0, 7);
         const prdTag   = prd.substring(8);
         if (periodTag === "P3") {
-          match = prdMonth === rangeMonth;
+          // Monthly recap spans up to two calendar months (e.g. 25 May–24 Jun).
+          // Include pengeluaran tagged with startMonth OR the following month.
+          const nm = nextMonth(rangeMonth);
+          match = prdMonth === rangeMonth || prdMonth === nm;
           if (match) matchTag = prdTag;
         } else {
           match = prdMonth === rangeMonth && prdTag === periodTag;
