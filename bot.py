@@ -1049,7 +1049,8 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
         # GoFood is settled at P3 reconciliation (manager holds GoFood until month-end)
         # Prefer monthly GoFood report total (authoritative) over per-day sum when available
-        gofood_total = gofood_monthly if gofood_monthly > 0 else gf(sorted_rows)
+        using_monthly_gofood = gofood_monthly > 0
+        gofood_total = gofood_monthly if using_monthly_gofood else gf(sorted_rows)
         pe_p3 = pengeluaran - pe_p1 - pe_p2
 
         if restaurant == "WKB Tuban" and kasbon_p2 > 0:
@@ -1079,7 +1080,8 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  Pengeluaran P3 (BTK+ops): -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
                 ("  + Kontrak Bangunan (fixed): -Rp " + format(kb, ",")) if kb > 0 else "",
-                ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
+                ("GoFood (laporan bulan): +Rp " + format(gofood_total, ",")) if (gofood_total > 0 and using_monthly_gofood) else "",
+                ("\u26a0\ufe0f GoFood (per hari, belum upload laporan): +Rp " + format(gofood_total, ",")) if (gofood_total > 0 and not using_monthly_gofood) else "",
                 "Total Biaya Bersama: -Rp " + format(shared_pe, ","),
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
                 "\U0001f4cb <i>Kasbon Manager (P2): Rp " + format(kasbon_p2, ",") + "</i>",
@@ -1112,7 +1114,8 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(pe_p2, ",") + ")") if pe_p2 > 0 else ""),
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  Pengeluaran P3: -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
-                ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
+                ("GoFood (laporan bulan): +Rp " + format(gofood_total, ",")) if (gofood_total > 0 and using_monthly_gofood) else "",
+                ("\u26a0\ufe0f GoFood (per hari, belum upload laporan): +Rp " + format(gofood_total, ",")) if (gofood_total > 0 and not using_monthly_gofood) else "",
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
                 "Bagian Investor (50%): Rp " + format(inv, ","),
                 "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
