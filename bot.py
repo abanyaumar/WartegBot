@@ -1053,26 +1053,34 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         pe_p3 = pengeluaran - pe_p1 - pe_p2
 
         if restaurant == "WKB Tuban" and kasbon_p2 > 0:
-            # WKB Tuban settlement (follows manual calculation):
-            # - P2 col J (pe_p2) already EXCLUDES kasbon_p2 (manager personal, stored in col G only)
-            # - pengeluaran (sum of col J) = all shared ops including P1 BTK advance
-            # - Balance formula: bal = inv - (p3_cash + kasbon_p2)  [mirrors manual]
-            total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
+            # WKB Tuban settlement — verified against manual calculation:
+            # - kasbon_p2 = manager's PERSONAL advance (col G). NOT a shared operational cost.
+            #   It IS counted in pe_p2 col J (Gemini includes kasbon in auto-total), so we
+            #   subtract it from pengeluaran to get true shared ops.
+            # - KB (Kontrak Bangunan) is a fixed monthly cost in MONTHLY_EXPENSES config.
+            #   It is NOT in the sheet (paid at settlement, not from daily P3 cash).
+            #   We ADD it to shared_pe here; pe_p3 from sheet is left unchanged for p3_cash.
+            # - paid_p2 = profit_p2 - pe_p2 (full pe_p2, since kasbon was physically kept by mgr)
+            # - Balance: bal = inv - (p3_cash + kasbon_p2); positive = investor owes manager
+            kb = MONTHLY_EXPENSES.get(restaurant, {}).get("kb", 0)
+            shared_pe = pengeluaran - kasbon_p2 + kb  # strip manager kasbon, add fixed KB
+            total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - shared_pe
             paid_p1 = max(0, profit_p1 - pe_p1)
-            paid_p2 = max(0, profit_p2 - pe_p2)   # pe_p2 excludes kasbon_p2 → full P2 net transferred
+            paid_p2 = max(0, profit_p2 - pe_p2)  # pe_p2 incl. kasbon: manager kept it, so less transferred
             paid    = paid_p1 + paid_p2
-            inv     = math.ceil(total / 2)         # ceiling division matches manual calculation
+            inv     = math.ceil(total / 2)         # ceiling division matches manual
             mgr     = inv - kasbon_p2              # manager's 50% minus personal kasbon
-            p3_cash = max(0, profit_p3 - pe_p3)   # cash physically at manager after P3 ops
+            p3_cash = max(0, profit_p3 - pe_p3)   # cash at manager (pe_p3 from sheet, no KB deducted)
             bal     = inv - (p3_cash + kasbon_p2)  # positive = investor still owes manager
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
                 "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe BTK: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
                 "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + " (kasbon mgr: Rp " + format(kasbon_p2, ",") + " \u2192 dipotong akhir)",
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
-                ("  Pengeluaran P3 (KB+BTK+ops): -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
+                ("  Pengeluaran P3 (BTK+ops): -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
+                ("  + Kontrak Bangunan (fixed): -Rp " + format(kb, ",")) if kb > 0 else "",
                 ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
-                "Total Pengeluaran: -Rp " + format(pengeluaran, ","),
+                "Total Biaya Bersama: -Rp " + format(shared_pe, ","),
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
                 "\U0001f4cb <i>Kasbon Manager (P2): Rp " + format(kasbon_p2, ",") + "</i>",
                 "<i>  \u2192 Dipotong dari bagian Manager, bukan biaya bersama</i>",
