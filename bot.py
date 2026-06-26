@@ -1222,12 +1222,13 @@ async def ringkasan_date_input(update, ctx):
             parse_mode="HTML")
         return RSUM_DATE
     await update.message.reply_text("Mengambil data " + restaurant + " dari " + text + "...")
-    ptag = ctx.user_data.get("rsum_ptag", "")
-    s = fetch_summary(restaurant, days=10, start_date=start_date, period_tag=ptag if ptag else None)
+    ptag   = ctx.user_data.get("rsum_ptag", "")
+    period = ctx.user_data.get("rsum_period", 1)
+    days   = 31 if period == 3 else 10
+    s = fetch_summary(restaurant, days=days, start_date=start_date, period_tag=ptag if ptag else None)
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
-    period = ctx.user_data.get("rsum_period", 1)
     await send_ringkasan(update.message.reply_text, restaurant, s, period)
     return ConversationHandler.END
 
