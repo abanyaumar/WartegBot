@@ -66,6 +66,23 @@ RESTAURANTS = [
     "WKB Tuban","WKB Bogor","Yogya UMY","Yogya ISI",
 ]
 
+# Monthly fixed expenses per restaurant: kb=Kontrak Bangunan, btk=Biaya Tenaga Kerja
+# btk_kasbon = portion of BTK already paid as kasbon advance in P1 (only for restaurants with employee advance)
+MONTHLY_EXPENSES = {
+    "Pisangan Lama": {"kb": 8_333_333, "btk": 6_000_000},
+    "Kebagusan":     {"kb": 5_000_000, "btk": 0},
+    "Pejaten":       {"kb": 5_000_000, "btk": 3_100_000},
+    "Kranggan":      {"kb": 4_100_000, "btk": 3_000_000},
+    "Cibinong":      {"kb": 4_600_000, "btk": 1_500_000},
+    "Siaga Raya":    {"kb": 5_000_000, "btk": 4_800_000},
+    "Ragunan":       {"kb": 3_800_000, "btk": 1_600_000},
+    "Buncit Raya":   {"kb": 5_000_000, "btk": 1_500_000},
+    "WKB Tuban":     {"kb": 2_500_000, "btk": 4_500_000, "btk_kasbon": 2_000_000},
+    "WKB Bogor":     {"kb": 1_500_000, "btk": 1_500_000},
+    "Yogya UMY":     {"kb": 2_000_000, "btk": 3_000_000},
+    "Yogya ISI":     {"kb": 1_750_000, "btk": 0},
+}
+
 # States
 SELECT_RESTAURANT, CONFIRM_DATA, EDIT_FIELD, VALIDATE_BELANJA, MAIN_GOFOOD = range(5)
 PENG_SELECT, PENG_PERIOD, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 8)
@@ -830,6 +847,39 @@ async def peng_input_received(update, ctx):
     for label, key in fields:
         if data.get(key,0) > 0: lines.append(label + ": Rp " + format(data[key],","))
     lines += ["--------------------","TOTAL: <b>Rp " + format(data.get("total",0),",") + "</b>"]
+
+    # Monthly expenses check: remind/warn about Kontrak Bangunan and BTK
+    monthly = MONTHLY_EXPENSES.get(restaurant, {})
+    if monthly:
+        today_day = datetime.date.today().day
+        ptag = "P1" if today_day <= 10 else ("P2" if today_day <= 20 else "P3")
+        exp_btk = monthly.get("btk", 0)
+        exp_kb  = monthly.get("kb", 0)
+        btk_kasbon = monthly.get("btk_kasbon", 0)
+        extracted_gaji = data.get("gaji", 0)
+        extracted_lain = data.get("lain_lain", 0)
+        lines.append("")
+        lines.append("📋 <b>Cek Biaya Bulanan (" + ptag + "):</b>")
+        if ptag == "P3":
+            # P3 end-of-month: expect BTK remaining (after kasbon advance) and KB
+            btk_remaining = exp_btk - btk_kasbon
+            if exp_btk > 0:
+                gaji_ok = "✅" if extracted_gaji >= int(btk_remaining * 0.9) else "⚠️"
+                lines.append(gaji_ok + " Gaji/BTK: ekspektasi <b>Rp " + format(btk_remaining, ",") + "</b> | diinput Rp " + format(extracted_gaji, ","))
+                if btk_kasbon > 0:
+                    lines.append("   <i>(BTK total Rp " + format(exp_btk, ",") + " - kasbon P1 Rp " + format(btk_kasbon, ",") + ")</i>")
+            else:
+                lines.append("ℹ️ Tidak ada BTK untuk cabang ini")
+            if exp_kb > 0:
+                lines.append("📌 Kontrak Bangunan: <b>Rp " + format(exp_kb, ",") + "</b> (pastikan masuk ke lain_lain | diinput Rp " + format(extracted_lain, ",") + ")")
+        elif ptag == "P1":
+            if exp_btk > 0 and btk_kasbon > 0:
+                lines.append("📌 BTK bulan ini: Rp " + format(exp_btk, ",") + " | Kasbon advance P1: Rp " + format(btk_kasbon, ","))
+                lines.append("   <i>(Sisa BTK Rp " + format(exp_btk - btk_kasbon, ",") + " akan masuk di pengeluaran P3)</i>")
+            elif exp_btk > 0:
+                lines.append("📌 BTK bulan ini: Rp " + format(exp_btk, ",") + " (dicatat di P3 akhir bulan)")
+        # P2: no monthly expense notes needed
+
     kb = [[InlineKeyboardButton("Ya, Simpan!", callback_data="save_peng")],[InlineKeyboardButton("Batalkan", callback_data="cancel_peng")]]
     await update.message.reply_text("\n".join(lines) + "\n\n<b>Data sudah benar?</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     return PENG_CONFIRM
