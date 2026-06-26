@@ -1050,28 +1050,34 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         # GoFood is settled at P3 reconciliation (manager holds GoFood until month-end)
         # Prefer monthly GoFood report total (authoritative) over per-day sum when available
         gofood_total = gofood_monthly if gofood_monthly > 0 else gf(sorted_rows)
-        total = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
         pe_p3 = pengeluaran - pe_p1 - pe_p2
-        # paid = what was actually transferred to investor in P1 and P2 (warung only, no GoFood)
-        paid_p1 = max(0, profit_p1 - pe_p1)
-        paid_p2 = max(0, profit_p2 - pe_p2)
-        paid  = paid_p1 + paid_p2
 
         if restaurant == "WKB Tuban" and kasbon_p2 > 0:
-            # pe Total (from sheet) already EXCLUDES kasbon — Gemini reads biaya total from photo
-            # which matches the manual format (kasbon listed separately, not in biaya total).
-            # So total is already the correct 50/50 split base — no need to add kasbon back.
-            # Only deduct kasbon_p2 (manager's advance) from the manager's share.
-            inv  = total // 2
-            mgr  = inv - kasbon_p2
-            bal  = inv - paid
+            # WKB Tuban 3-period expense structure:
+            # P1 pe: BTK advance 2M (SHARED cost → deducted from split base, reduces P1 transfer)
+            # P2 pe: manager kasbon (PERSONAL → NOT shared, deducted from manager's 50% only)
+            # P3 pe: KB + BTK remaining + other ops (SHARED cost → deducted from split base)
+            #
+            # shared_pe excludes kasbon_p2 so investor only bears real operational costs.
+            # paid_p2 uses only shared P2 expense (= 0 when P2 row contains only kasbon).
+            shared_pe_p2 = pe_p2 - kasbon_p2      # shared portion of P2 (usually 0)
+            shared_pe    = pengeluaran - kasbon_p2 # total shared ops cost excl. manager kasbon
+            total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - shared_pe
+            paid_p1 = max(0, profit_p1 - pe_p1)
+            paid_p2 = max(0, profit_p2 - shared_pe_p2)  # manager transfers full P2 profit
+            paid    = paid_p1 + paid_p2
+            inv     = total // 2
+            mgr     = inv - kasbon_p2
+            bal     = inv - paid
+            pe_p2_display = (" (pe bersama: -Rp " + format(shared_pe_p2, ",") + ")") if shared_pe_p2 > 0 else " (kasbon mgr: Rp " + format(kasbon_p2, ",") + " → dipotong akhir)"
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
-                "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
-                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(pe_p2, ",") + ")") if pe_p2 > 0 else ""),
+                "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe BTK: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
+                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + pe_p2_display,
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
-                ("  Pengeluaran P3: -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
+                ("  Pengeluaran P3 (KB+BTK+ops): -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
                 ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
+                "Biaya operasional bersama: -Rp " + format(shared_pe, ","),
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
                 "\U0001f4cb <i>Kasbon Manager (P2): Rp " + format(kasbon_p2, ",") + "</i>",
                 "<i>  \u2192 Dipotong dari bagian Manager, bukan biaya bersama</i>",
@@ -1080,8 +1086,13 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
             ]
         else:
-            inv = total // 2
-            bal = inv - paid
+            # Normal restaurants: all pengeluaran are shared costs, split 50/50
+            total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
+            paid_p1 = max(0, profit_p1 - pe_p1)
+            paid_p2 = max(0, profit_p2 - pe_p2)
+            paid    = paid_p1 + paid_p2
+            inv     = total // 2
+            bal     = inv - paid
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
                 "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
