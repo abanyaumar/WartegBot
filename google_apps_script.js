@@ -243,7 +243,15 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
   const gofoodSheet = ss.getSheetByName(restaurant + "_GoFood");
   if (gofoodSheet && gofoodSheet.getLastRow() > 1) {
     const gdata = gofoodSheet.getRange(2,1,gofoodSheet.getLastRow()-1,3).getValues();
-    gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
+    if (startDateParam) {
+      // For a specific period recap, use the most recently uploaded GoFood entry
+      // (last row = latest upload = authoritative monthly total).
+      const lastRow = gdata[gdata.length - 1];
+      totalGofoodNetto = Number(lastRow[2])||0;
+    } else {
+      // No date filter: sum all (legacy/dashboard use)
+      gdata.forEach(function(row){ totalGofoodNetto += Number(row[2])||0; });
+    }
   }
 
   // Pengeluaran: filter by periodTag (P1/P2/P3) and month from startDateParam

@@ -954,7 +954,7 @@ def get_month_and_rows(restaurant, rows):
     )
     return month, month_rows
 
-def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0, pe_p2=0, kasbon_total=0, kasbon_p2=0):
+def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0, pe_p2=0, kasbon_total=0, kasbon_p2=0, gofood_monthly=0):
     def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
     def gf(lst):   return sum(r.get("gofood_net", 0) for r in lst)
     def drange(lst):
@@ -998,7 +998,8 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         p3 = sorted_rows[20:]
         profit_p1 = prof(p1); profit_p2 = prof(p2); profit_p3 = prof(p3)
         # GoFood is settled at P3 reconciliation (manager holds GoFood until month-end)
-        gofood_total = gf(sorted_rows)
+        # Prefer monthly GoFood report total (authoritative) over per-day sum when available
+        gofood_total = gofood_monthly if gofood_monthly > 0 else gf(sorted_rows)
         total = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
         pe_p3 = pengeluaran - pe_p1 - pe_p2
         # paid = what was actually transferred to investor in P1 and P2 (warung only, no GoFood)
@@ -1060,6 +1061,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     pe_p3 = s.get("pengeluaran_p3", 0)
     kasbon_total = s.get("kasbon_total", 0)
     kasbon_p2    = s.get("kasbon_p2", 0)
+    gofood_monthly = s.get("total_gofood_netto", 0)  # monthly GoFood report total (authoritative for P3)
     rows = s.get("rows", [])
     om = sum(r.get("omzet", 0) for r in rows)
     gf = sum(r.get("gofood_net", 0) for r in rows)
@@ -1107,7 +1109,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     if pe > 0:
         summary_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
     summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
-    profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2, kasbon_total, kasbon_p2)
+    profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2, kasbon_total, kasbon_p2, gofood_monthly if period == 3 else 0)
     if profit_section:
         summary_lines.append(profit_section)
 
