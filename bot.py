@@ -954,7 +954,7 @@ def get_month_and_rows(restaurant, rows):
     )
     return month, month_rows
 
-def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0, pe_p2=0, kasbon_total=0):
+def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0, pe_p2=0, kasbon_total=0, kasbon_p2=0):
     def prof(lst): return sum(r.get("keuntungan", 0) for r in lst)
     def gf(lst):   return sum(r.get("gofood_net", 0) for r in lst)
     def drange(lst):
@@ -1006,27 +1006,24 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         paid_p2 = max(0, profit_p2 - pe_p2)
         paid  = paid_p1 + paid_p2
 
-        if restaurant == "WKB Tuban" and kasbon_total > 0:
-            # Kasbon = manager's personal advance, NOT a shared business expense.
-            # pengeluaran already included kasbon (reducing total).
-            # Add kasbon back so the 50/50 split base excludes it,
-            # then deduct kasbon only from the manager's share.
-            total_for_split = total + kasbon_total
-            inv  = total_for_split // 2
-            mgr  = inv - kasbon_total  # manager's net after returning kasbon advance
+        if restaurant == "WKB Tuban" and kasbon_p2 > 0:
+            # pe Total (from sheet) already EXCLUDES kasbon — Gemini reads biaya total from photo
+            # which matches the manual format (kasbon listed separately, not in biaya total).
+            # So total is already the correct 50/50 split base — no need to add kasbon back.
+            # Only deduct kasbon_p2 (manager's advance) from the manager's share.
+            inv  = total // 2
+            mgr  = inv - kasbon_p2
             bal  = inv - paid
-            p2_pe_display = pe_p2 - kasbon_total  # show pe_p2 excl. kasbon on the P2 line
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
                 "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
-                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(p2_pe_display, ",") + ")") if p2_pe_display > 0 else "") + ("  <i>+ kasbon Rp " + format(kasbon_total, ",") + "</i>" if kasbon_total > 0 else ""),
+                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + ((" (pe: -Rp " + format(pe_p2, ",") + ")") if pe_p2 > 0 else ""),
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  Pengeluaran P3: -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
                 ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
-                "<i>\U0001f4cb Kasbon Manager: Rp " + format(kasbon_total, ",") + "</i>",
+                "\U0001f4cb <i>Kasbon Manager (P2): Rp " + format(kasbon_p2, ",") + "</i>",
                 "<i>  \u2192 Dipotong dari bagian Manager, bukan biaya bersama</i>",
-                "Dasar Pembagian (excl. kasbon): Rp " + format(total_for_split, ","),
                 "Bagian Investor (50%): <b>Rp " + format(inv, ",") + "</b>",
                 "Bagian Manager (50% \u2212 kasbon): <b>Rp " + format(mgr, ",") + "</b>",
                 "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
@@ -1110,7 +1107,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     if pe > 0:
         summary_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
     summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
-    profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2, kasbon_total)
+    profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2, kasbon_total, kasbon_p2)
     if profit_section:
         summary_lines.append(profit_section)
 
