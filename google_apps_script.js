@@ -241,6 +241,7 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
   // Pengeluaran: filter by periodTag (P1/P2/P3) and month from startDateParam
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   let totalPengeluaranP1 = 0, totalPengeluaranP2 = 0, totalPengeluaranP3 = 0;
+  let totalKasbon = 0, totalKasbonP1 = 0, totalKasbonP2 = 0;
   if (pengSheet && pengSheet.getLastRow() > 1) {
     const rangeMonth = startDateParam ? startDateParam.substring(0, 7) : null;
     const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
@@ -266,9 +267,11 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
       }
       if (match) {
         const amt = Number(row[9])||0;
+        const kasbon = Number(row[6])||0;  // COLS_PENG index 6 = Kasbon
         totalPengeluaran += amt;
-        if (matchTag === "P1") totalPengeluaranP1 += amt;
-        else if (matchTag === "P2") totalPengeluaranP2 += amt;
+        totalKasbon += kasbon;
+        if (matchTag === "P1") { totalPengeluaranP1 += amt; totalKasbonP1 += kasbon; }
+        else if (matchTag === "P2") { totalPengeluaranP2 += amt; totalKasbonP2 += kasbon; }
         else if (matchTag === "P3") totalPengeluaranP3 += amt;
       }
     });
@@ -309,6 +312,9 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
     pengeluaran_p1: totalPengeluaranP1,
     pengeluaran_p2: totalPengeluaranP2,
     pengeluaran_p3: totalPengeluaranP3,
+    kasbon_total: totalKasbon,
+    kasbon_p1: totalKasbonP1,
+    kasbon_p2: totalKasbonP2,
     days_counted: days,
     rows: dailyRows
   };
