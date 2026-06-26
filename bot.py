@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import os, json, logging, re, html, datetime, time, asyncio
+import os, json, logging, re, html, datetime, time, asyncio, math
 from google import genai
 from google.genai import types
 import requests
@@ -1061,7 +1061,7 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             paid_p1 = max(0, profit_p1 - pe_p1)
             paid_p2 = max(0, profit_p2 - pe_p2)   # pe_p2 excludes kasbon_p2 → full P2 net transferred
             paid    = paid_p1 + paid_p2
-            inv     = total // 2
+            inv     = math.ceil(total / 2)         # ceiling division matches manual calculation
             mgr     = inv - kasbon_p2              # manager's 50% minus personal kasbon
             p3_cash = max(0, profit_p3 - pe_p3)   # cash physically at manager after P3 ops
             bal     = inv - (p3_cash + kasbon_p2)  # positive = investor still owes manager
