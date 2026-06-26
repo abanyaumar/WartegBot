@@ -1053,38 +1053,43 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         pe_p3 = pengeluaran - pe_p1 - pe_p2
 
         if restaurant == "WKB Tuban" and kasbon_p2 > 0:
-            # WKB Tuban 3-period expense structure:
-            # P1 pe: BTK advance 2M (SHARED cost → deducted from split base, reduces P1 transfer)
-            # P2 pe: manager kasbon (PERSONAL → NOT shared, deducted from manager's 50% only)
-            # P3 pe: KB + BTK remaining + other ops (SHARED cost → deducted from split base)
-            #
-            # shared_pe excludes kasbon_p2 so investor only bears real operational costs.
-            # paid_p2 uses only shared P2 expense (= 0 when P2 row contains only kasbon).
-            shared_pe_p2 = pe_p2 - kasbon_p2      # shared portion of P2 (usually 0)
-            shared_pe    = pengeluaran - kasbon_p2 # total shared ops cost excl. manager kasbon
-            total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - shared_pe
+            # WKB Tuban settlement (follows manual calculation):
+            # - P2 col J (pe_p2) already EXCLUDES kasbon_p2 (manager personal, stored in col G only)
+            # - pengeluaran (sum of col J) = all shared ops including P1 BTK advance
+            # - Balance formula: bal = inv - (p3_cash + kasbon_p2)  [mirrors manual]
+            total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
             paid_p1 = max(0, profit_p1 - pe_p1)
-            paid_p2 = max(0, profit_p2 - shared_pe_p2)  # manager transfers full P2 profit
+            paid_p2 = max(0, profit_p2 - pe_p2)   # pe_p2 excludes kasbon_p2 → full P2 net transferred
             paid    = paid_p1 + paid_p2
             inv     = total // 2
-            mgr     = inv - kasbon_p2
-            bal     = inv - paid
-            pe_p2_display = (" (pe bersama: -Rp " + format(shared_pe_p2, ",") + ")") if shared_pe_p2 > 0 else " (kasbon mgr: Rp " + format(kasbon_p2, ",") + " → dipotong akhir)"
+            mgr     = inv - kasbon_p2              # manager's 50% minus personal kasbon
+            p3_cash = max(0, profit_p3 - pe_p3)   # cash physically at manager after P3 ops
+            bal     = inv - (p3_cash + kasbon_p2)  # positive = investor still owes manager
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
                 "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe BTK: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
-                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + pe_p2_display,
+                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + " (kasbon mgr: Rp " + format(kasbon_p2, ",") + " \u2192 dipotong akhir)",
                 "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  Pengeluaran P3 (KB+BTK+ops): -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
                 ("GoFood (bulan): +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
-                "Biaya operasional bersama: -Rp " + format(shared_pe, ","),
+                "Total Pengeluaran: -Rp " + format(pengeluaran, ","),
                 "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
                 "\U0001f4cb <i>Kasbon Manager (P2): Rp " + format(kasbon_p2, ",") + "</i>",
                 "<i>  \u2192 Dipotong dari bagian Manager, bukan biaya bersama</i>",
                 "Bagian Investor (50%): <b>Rp " + format(inv, ",") + "</b>",
-                "Bagian Manager (50% \u2212 kasbon): <b>Rp " + format(mgr, ",") + "</b>",
+                "Bagian Manager (50% \u2212 kasbon): <b>Rp " + format(mgr, ",") + "</b>", "",
+                "\U0001f4b5 Uang di pengelola (P3): Rp " + format(p3_cash, ","),
+                "Kasbon dipegang mgr: Rp " + format(kasbon_p2, ","),
+                "Total dipegang Manager: <b>Rp " + format(p3_cash + kasbon_p2, ",") + "</b>",
                 "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
             ]
+            # positive bal = investor still owes manager; negative = manager owes investor
+            if bal > 0:
+                lines.append("\u27a1\ufe0f Investor setor ke Manager: <b>Rp " + format(bal, ",") + "</b>")
+            elif bal < 0:
+                lines.append("\u2b05\ufe0f Manager transfer ke Investor: <b>Rp " + format(abs(bal), ",") + "</b>")
+            else:
+                lines.append("\u2705 Sudah seimbang, tidak ada transfer")
         else:
             # Normal restaurants: all pengeluaran are shared costs, split 50/50
             total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
@@ -1104,13 +1109,13 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "Bagian Investor (50%): Rp " + format(inv, ","),
                 "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
             ]
-
-        if bal > 0:
-            lines.append("\u27a1\ufe0f Manager transfer ke Investor: <b>Rp " + format(bal, ",") + "</b>")
-        elif bal < 0:
-            lines.append("\u2b05\ufe0f Investor kembalikan ke Manager: <b>Rp " + format(abs(bal), ",") + "</b>")
-        else:
-            lines.append("\u2705 Sudah seimbang, tidak ada transfer")
+            # positive bal = manager still owes investor; negative = investor returns to manager
+            if bal > 0:
+                lines.append("\u27a1\ufe0f Manager transfer ke Investor: <b>Rp " + format(bal, ",") + "</b>")
+            elif bal < 0:
+                lines.append("\u2b05\ufe0f Investor kembalikan ke Manager: <b>Rp " + format(abs(bal), ",") + "</b>")
+            else:
+                lines.append("\u2705 Sudah seimbang, tidak ada transfer")
     lines = [l for l in lines if l != ""]  # remove empty strings from conditional
     return "\n".join(lines)
 
