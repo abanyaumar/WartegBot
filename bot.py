@@ -88,6 +88,7 @@ SELECT_RESTAURANT, CONFIRM_DATA, EDIT_FIELD, VALIDATE_BELANJA, MAIN_GOFOOD = ran
 PENG_SELECT, PENG_PERIOD, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 8)
 GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(8, 12)
 RSUM_SELECT, RSUM_PERIOD, RSUM_DATE = 11, 13, 12
+LGOFOOD_SELECT, LGOFOOD_DATE = 14, 15
 
 def esc(text):
     return html.escape(str(text))
@@ -980,7 +981,99 @@ async def gofood_confirm(update, ctx):
     await q.edit_message_text(msg if ok else "Gagal simpan.", parse_mode="HTML")
     return ConversationHandler.END
 
-# ======= RINGKASAN =======
+# ======= LAPORAN GOFOOD =======
+async def lgofood_start(update, ctx):
+    await update.message.reply_text(
+        "<b>Laporan GoFood Harian</b>\n\nPilih cabang:",
+        parse_mode="HTML", reply_markup=restaurant_keyboard())
+    return LGOFOOD_SELECT
+
+async def lgofood_restaurant_selected(update, ctx):
+    q = update.callback_query; await q.answer()
+    if q.data == "cancel":
+        await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
+    restaurant = q.data.split("|", 1)[1]
+    ctx.user_data["lgofood_restaurant"] = restaurant
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("10 Hari Terakhir", callback_data="lgofood_latest")],
+        [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="lgofood_manual")],
+        [InlineKeyboardButton("Batalkan", callback_data="cancel")],
+    ])
+    await q.edit_message_text(
+        "<b>" + restaurant + "</b>\n\nPilih rentang data GoFood:",
+        parse_mode="HTML", reply_markup=kb)
+    return LGOFOOD_DATE
+
+async def lgofood_date_option(update, ctx):
+    q = update.callback_query; await q.answer()
+    restaurant = ctx.user_data.get("lgofood_restaurant", "")
+    if q.data == "cancel":
+        await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
+    if q.data == "lgofood_latest":
+        await q.edit_message_text("Mengambil data GoFood " + restaurant + "...")
+        s = fetch_summary(restaurant, days=10)
+        await _send_lgofood(q.message.reply_text, restaurant, s)
+        return ConversationHandler.END
+    if q.data == "lgofood_manual":
+        await q.edit_message_text(
+            "<b>" + restaurant + " - Laporan GoFood</b>\n\n"
+            "Ketik tanggal mulai, contoh:\n"
+            "<code>1 Jun 2026</code>\n"
+            "<code>01/06/2026</code>\n"
+            "<code>2026-06-01</code>",
+            parse_mode="HTML")
+        return LGOFOOD_DATE
+    return LGOFOOD_DATE
+
+async def lgofood_date_input(update, ctx):
+    restaurant = ctx.user_data.get("lgofood_restaurant", "")
+    text = update.message.text.strip()
+    start_date = parse_date_input(text)
+    if not start_date:
+        await update.message.reply_text(
+            "Format tanggal tidak dikenal. Coba:\n"
+            "<code>1 Jun 2026</code> atau <code>01/06/2026</code>",
+            parse_mode="HTML")
+        return LGOFOOD_DATE
+    await update.message.reply_text("Mengambil data GoFood " + restaurant + " dari " + text + "...")
+    s = fetch_summary(restaurant, days=10, start_date=start_date)
+    await _send_lgofood(update.message.reply_text, restaurant, s)
+    return ConversationHandler.END
+
+async def _send_lgofood(send_fn, restaurant, s):
+    if not s or s.get("status") == "error" or not s.get("rows"):
+        await send_fn("Gagal mengambil data atau tidak ada data GoFood."); return
+    rows = s.get("rows", [])
+    periode = s.get("periode", "-")
+    total_gf = sum(r.get("gofood_net", 0) for r in rows)
+    total_omzet = sum(r.get("omzet", 0) for r in rows)
+    lines = [
+        "<b>Laporan GoFood Harian</b>",
+        "<b>" + restaurant + "</b>",
+        "Periode: " + periode,
+        "====================",
+        "",
+    ]
+    for r in rows:
+        gf = r.get("gofood_net", 0)
+        omzet = r.get("omzet", 0)
+        date = r.get("date", "?")
+        pct = round(gf / omzet * 100, 1) if omzet > 0 else 0
+        gf_str = "Rp " + format(gf, ",") if gf > 0 else "<i>Tidak ada</i>"
+        pct_str = (" (" + str(pct) + "% dari omzet)") if gf > 0 else ""
+        lines.append("<b>" + date + "</b>")
+        lines.append("  GoFood: " + gf_str + pct_str)
+        lines.append("  Omzet Tunai: Rp " + format(omzet, ","))
+        lines.append("")
+    lines += [
+        "====================",
+        "Total GoFood (10 hari): <b>Rp " + format(total_gf, ",") + "</b>",
+        "Total Omzet Tunai     : Rp " + format(total_omzet, ","),
+    ]
+    if total_omzet + total_gf > 0:
+        pct_total = round(total_gf / (total_omzet + total_gf) * 100, 1)
+        lines.append("GoFood = <b>" + str(pct_total) + "% dari total pendapatan</b>")
+    await send_fn("\n".join(lines), parse_mode="HTML")
 def get_month_and_rows(restaurant, rows):
     """Find the dominant month from rows and return all rows for that month."""
     if not rows:
@@ -1378,6 +1471,7 @@ def main():
             BotCommand("start",           "Mulai / info bot"),
             BotCommand("help",            "Panduan lengkap"),
             BotCommand("pengeluaran",     "Input pengeluaran 10 hari"),
+            BotCommand("laporangofood",    "Laporan GoFood harian (10 hari)"),
             BotCommand("gofood",          "Upload laporan GoFood"),
             BotCommand("ringkasan10hari", "Ringkasan dan profit bersih 10 hari"),
             BotCommand("cancel",          "Batalkan operasi saat ini"),
@@ -1433,6 +1527,18 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=False,
     )
+    conv_lgofood = ConversationHandler(
+        entry_points=[CommandHandler("laporangofood", lgofood_start)],
+        states={
+            LGOFOOD_SELECT: [CallbackQueryHandler(lgofood_restaurant_selected)],
+            LGOFOOD_DATE: [
+                CallbackQueryHandler(lgofood_date_option, pattern="^(lgofood_latest|lgofood_manual|cancel)$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, lgofood_date_input),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False,
+    )
     conv_ringkasan = ConversationHandler(
         entry_points=[CommandHandler("ringkasan10hari", ringkasan_start)],
         states={
@@ -1456,6 +1562,7 @@ def main():
     # intercept photos intended for other conversations if added first.
     app.add_handler(conv_peng)
     app.add_handler(conv_gofood)
+    app.add_handler(conv_lgofood)
     app.add_handler(conv_ringkasan)
     app.add_handler(conv_main)
     app.add_error_handler(error_handler)
