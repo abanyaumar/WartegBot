@@ -1187,12 +1187,15 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             bal     = inv - (p3_cash + kasbon_p2)  # positive = investor still owes manager
             total_pendapatan = profit_p1 + profit_p2 + profit_p3 + gofood_total
             gf_label = "GoFood/QRIS (laporan bulan)" if using_monthly_gofood else "\u26a0\ufe0f GoFood/QRIS (per hari, belum upload)"
+            # Build per-day keuntungan for P1 and P2 (diagnostic)
+            def fmt_period_days(period_rows):
+                return "".join("\n    " + r.get("date","?") + ": Rp " + format(r.get("keuntungan",0),",") for r in period_rows)
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>",
                 "====================", "",
                 "<b>PENDAPATAN:</b>",
-                "  P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ","),
-                "  P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ","),
+                "  P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + fmt_period_days(p1),
+                "  P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + fmt_period_days(p2),
                 "  P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
                 ("  " + gf_label + ": Rp " + format(gofood_total, ",")) if gofood_total > 0 else "  GoFood/QRIS: Rp 0",
                 "  <b>Total Pendapatan: Rp " + format(total_pendapatan, ",") + "</b>", "",
