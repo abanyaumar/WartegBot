@@ -1102,7 +1102,7 @@ def get_month_and_rows(restaurant, rows):
         return None, []
     month = max(mc, key=mc.get)
     # Fetch full month data (31 days covers any month)
-    s_full = fetch_summary(restaurant, days=31)
+    s_full = fetch_summary(restaurant, days=30)
     all_rows = s_full.get("rows", []) if s_full else []
     month_rows = sorted(
         [r for r in all_rows if row_ym(r) == month],
@@ -1407,7 +1407,7 @@ async def ringkasan_date_option_selected(update, ctx):
     if q.data == "cancel":
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     if q.data == "rsum_latest":
-        days = 31 if period == 3 else 10
+        days = 30 if period == 3 else 10
         await q.edit_message_text("Mengambil data " + restaurant + "...")
         s = fetch_summary(restaurant, days=days)
         if not s or s.get("status") == "error":
@@ -1439,7 +1439,7 @@ async def ringkasan_date_input(update, ctx):
     await update.message.reply_text("Mengambil data " + restaurant + " dari " + text + "...")
     ptag   = ctx.user_data.get("rsum_ptag", "")
     period = ctx.user_data.get("rsum_period", 1)
-    days   = 31 if period == 3 else 10
+    days   = 30 if period == 3 else 10
     s = fetch_summary(restaurant, days=days, start_date=start_date, period_tag=ptag if ptag else None)
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
