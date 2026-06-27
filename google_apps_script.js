@@ -89,8 +89,8 @@ function saveMainReport(ss, restaurant, data) {
   const tb = (restaurant === "WKB Tuban") ? bp : (bw + bp);
   const k  = omzet - tb;
   const tgl=data.tanggal||new Date().toISOString().split("T")[0];
-  // Store 1 day early — matches historical storage convention; fmtDate adds +1 for display
-  const storedTgl = prevDay(tgl);
+  // Store actual operational date (no offset)
+  const storedTgl = tgl;
   const lastRow=sheet.getLastRow();
   if (lastRow>1) {
     const dates=sheet.getRange(2,1,lastRow-1,1).getValues();
@@ -101,7 +101,7 @@ function saveMainReport(ss, restaurant, data) {
     });
     if(dup) return resp({status:"duplicate",message:"Data "+tgl+" sudah ada"});
   }
-  const tglDate = new Date(storedTgl);
+  const tglDate = new Date(storedTgl + "T12:00:00+07:00");
   sheet.appendRow([tglDate,omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
   const nr=sheet.getLastRow();
   sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY");
@@ -140,8 +140,8 @@ function saveGofood(ss, restaurant, data) {
   if (data.tanggal) {
     const mainSheet = ss.getSheetByName(restaurant);
     if (mainSheet && mainSheet.getLastRow() > 1) {
-      // Stored dates are 1 day early — compare against prevDay(tanggal)
-      const tgl = prevDay(String(data.tanggal).substring(0, 10));
+      // Stored dates = actual operational dates (no offset)
+      const tgl = String(data.tanggal).substring(0, 10);
       const dates = mainSheet.getRange(2, 1, mainSheet.getLastRow()-1, 1).getValues();
       for (let i = 0; i < dates.length; i++) {
         const rowDate = dates[i][0];
@@ -177,13 +177,10 @@ function nextMonth(yyyymm) {
   return y + "-" + String(m + 1).padStart(2, "0");
 }
 
-// All dates in Google Sheet are stored 1 day early (convention from historical data).
-// fmtDate adds +1 day so the displayed date matches the actual operational date.
+// fmtDate: display date as-is (stored date = operational date, no offset needed)
 function fmtDate(d) {
   if (!d) return "";
   var dt = (d instanceof Date) ? d : new Date(d);
-  // Add 1 day to compensate for 1-day-early storage convention
-  dt = new Date(dt.getTime() + 86400000);
   var ds = Utilities.formatDate(dt, "Asia/Jakarta", "yyyy-MM-dd");
   var p = ds.split("-");
   var MNAMES = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Ags","Sep","Okt","Nov","Des"];
@@ -213,16 +210,17 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
 
     var filtered;
     if (startDateParam) {
-      // Dates stored 1 day early (prevDay convention); shift adjStart back by 1 day to match.
-      var adjStartMs = new Date(startDateParam + "T12:00:00Z").getTime() - 86400000;
-      var adjStart   = Utilities.formatDate(new Date(adjStartMs), "UTC", "yyyy-MM-dd");
-      // End: (days-1) calendar days after adjStart (stored dates, 1-day-early)
-      var adjEndMs   = adjStartMs + (days - 1) * 86400000;
-      var adjEnd     = Utilities.formatDate(new Date(adjEndMs), "UTC", "yyyy-MM-dd");
-      filtered = data.filter(function(row){
-        var ds = row[0] ? toDateStr(row[0]) : "";
-        return ds >= adjStart && ds <= adjEnd;
-      });
+      // No offset: stored date = operational date.
+      // Take the first `days` rows where stored date >= startDateParam.
+      // Using row-count approach handles closed days correctly (no fixed calendar window).
+      filtered = [];
+      for (var i = 0; i < data.length; i++) {
+        var ds = data[i][0] ? toDateStr(data[i][0]) : "";
+        if (ds >= startDateParam) {
+          filtered.push(data[i]);
+          if (filtered.length >= days) break;
+        }
+      }
     } else {
       filtered = data.slice(Math.max(0, data.length - days));
     }
