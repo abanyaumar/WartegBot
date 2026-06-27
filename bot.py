@@ -1162,7 +1162,9 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         # GoFood is settled at P3 reconciliation (manager holds GoFood until month-end)
         # Prefer monthly GoFood report total (authoritative) over per-day sum when available
         using_monthly_gofood = gofood_monthly > 0
-        gofood_total = gofood_monthly if using_monthly_gofood else gf(sorted_rows)
+        gofood_daily_sum = gf(sorted_rows)
+        gofood_total = gofood_monthly if using_monthly_gofood else gofood_daily_sum
+        gofood_deviation = (gofood_monthly - gofood_daily_sum) if using_monthly_gofood else 0
         pe_p3 = pengeluaran - pe_p1 - pe_p2
 
         if restaurant == "WKB Tuban" and kasbon_p2 > 0:
@@ -1197,7 +1199,9 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "    Rp " + format(profit_p2, ","),
                 "  \u2022 P3 " + drange(p3) + " (" + str(len(p3)) + " hari)",
                 "    Rp " + format(profit_p3, ","),
-                ("  \u2022 " + gf_label + ": Rp " + format(gofood_total, ",")) if gofood_total > 0 else "  \u2022 GoFood/QRIS: Rp 0",
+                ("  \u2022 " + gf_label + ": Rp " + format(gofood_total, ",") +
+                 (("  \u26a0\ufe0f selisih Rp " + format(abs(gofood_deviation), ",") + " dari input harian") if using_monthly_gofood and gofood_deviation != 0 else "")
+                ) if gofood_total > 0 else "  \u2022 GoFood/QRIS: Rp 0",
                 "  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
                 "  <b>Total Pendapatan: Rp " + format(total_pendapatan, ",") + "</b>", "",
                 "\U0001f4b8 <b>BIAYA:</b>",
