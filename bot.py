@@ -1190,29 +1190,37 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             lines += [
                 "Periode ke-3 \u2014 <b>Rekap Bulanan</b>",
                 "====================", "",
-                "<b>PENDAPATAN:</b>",
-                "  P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ","),
-                "  P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ","),
-                "  P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
-                ("  " + gf_label + ": Rp " + format(gofood_total, ",")) if gofood_total > 0 else "  GoFood/QRIS: Rp 0",
+                "\U0001f4b0 <b>PENDAPATAN:</b>",
+                "  \u2022 P1 " + drange(p1) + " (" + str(len(p1)) + " hari)",
+                "    Rp " + format(profit_p1, ","),
+                "  \u2022 P2 " + drange(p2) + " (" + str(len(p2)) + " hari)",
+                "    Rp " + format(profit_p2, ","),
+                "  \u2022 P3 " + drange(p3) + " (" + str(len(p3)) + " hari)",
+                "    Rp " + format(profit_p3, ","),
+                ("  \u2022 " + gf_label + ": Rp " + format(gofood_total, ",")) if gofood_total > 0 else "  \u2022 GoFood/QRIS: Rp 0",
+                "  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
                 "  <b>Total Pendapatan: Rp " + format(total_pendapatan, ",") + "</b>", "",
-                "<b>BIAYA:</b>",
-                "  Pengeluaran Operasional: Rp " + format(pengeluaran - kasbon_p2, ","),
-                ("  Kontrak Bangunan: Rp " + format(kb, ",")) if kb > 0 else "",
+                "\U0001f4b8 <b>BIAYA:</b>",
+                "  \u2022 Pengeluaran Operasional: Rp " + format(pengeluaran - kasbon_p2, ","),
+                ("  \u2022 Kontrak Bangunan: Rp " + format(kb, ",")) if kb > 0 else "",
+                "  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
                 "  <b>Total Biaya: Rp " + format(shared_pe, ",") + "</b>", "",
-                "<b>Keuntungan Total: Rp " + format(total, ",") + "</b>",
-                "<b>Keuntungan Masing2 Pihak: Rp " + format(inv, ",") + "</b>",
+                "\U0001f4ca <b>Keuntungan Total: Rp " + format(total, ",") + "</b>",
+                "\U0001f91d <b>Keuntungan Masing2 Pihak: Rp " + format(inv, ",") + "</b>",
                 "====================", "",
-                "<b>PERHITUNGAN UANG:</b>",
-                "  Hak Pengelola (50% keuntungan): Rp " + format(inv, ","),
-                "  Uang di Pengelola (kas P3 + kas bon): Rp " + format(p3_cash + kasbon_p2, ","),
-                "  <i>(kas P3: Rp " + format(p3_cash, ",") + " + kas bon: Rp " + format(kasbon_p2, ",") + ")</i>",
+                "\U0001f4b5 <b>PERHITUNGAN UANG:</b>",
+                "  Hak Pengelola    : Rp " + format(inv, ","),
+                "  Uang di Pengelola: Rp " + format(p3_cash + kasbon_p2, ","),
+                "   \u2514 kas P3: Rp " + format(p3_cash, ",") + " + kas bon: Rp " + format(kasbon_p2, ","),
                 "====================",
             ]
+            formula_line = "  (Rp " + format(inv, ",") + " \u2212 Rp " + format(p3_cash + kasbon_p2, ",") + " = Rp " + format(bal, ",") + ")"
             if bal > 0:
                 lines.append("\u27a1\ufe0f <b>Investor setor ke Pengelola: Rp " + format(bal, ",") + "</b>")
+                lines.append(formula_line)
             elif bal < 0:
                 lines.append("\u2b05\ufe0f <b>Pengelola transfer ke Investor: Rp " + format(abs(bal), ",") + "</b>")
+                lines.append(formula_line)
             else:
                 lines.append("\u2705 <b>Sudah seimbang, tidak ada transfer</b>")
         else:
