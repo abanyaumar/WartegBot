@@ -293,9 +293,12 @@ def extract_gofood_report(image_bytes, restaurant):
             d = json.loads(m.group())
             for f in ["total_bruto","total_netto","jumlah_transaksi"]:
                 d[f] = int(str(d.get(f,0)).replace(",","").replace(".","") or 0)
-            # If netto=0 but bruto>0, use bruto as netto (QRIS has no platform fee deduction)
-            if d["total_netto"] == 0 and d["total_bruto"] > 0:
-                d["total_netto"] = d["total_bruto"]
+            # Always compute netto = bruto * 0.993 (0.7% MDR fee for QRIS/GoFood platform)
+            # If Gemini already deducted fees, bruto=netto so this still applies correctly
+            if d["total_bruto"] > 0:
+                d["total_netto"] = round(d["total_bruto"] * 0.993)
+            elif d["total_netto"] == 0:
+                d["total_netto"] = 0
             return d
     except Exception as e:
         logger.error("GoFood error: " + str(e))
