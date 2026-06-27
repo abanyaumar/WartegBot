@@ -1204,9 +1204,9 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
                 "<b>Keuntungan Masing2 Pihak: Rp " + format(inv, ",") + "</b>",
                 "====================", "",
                 "<b>PERHITUNGAN UANG:</b>",
-                "  Uang di Pengelola (kas P3): Rp " + format(p3_cash, ","),
-                "  Kas Bon di tangan pengelola: Rp " + format(kasbon_p2, ","),
-                "  <b>Total Uang di Pengelola: Rp " + format(p3_cash + kasbon_p2, ",") + "</b>",
+                "  Hak Pengelola (50% keuntungan): Rp " + format(inv, ","),
+                "  Uang di Pengelola (kas P3 + kas bon): Rp " + format(p3_cash + kasbon_p2, ","),
+                "  <i>(kas P3: Rp " + format(p3_cash, ",") + " + kas bon: Rp " + format(kasbon_p2, ",") + ")</i>",
                 "====================",
             ]
             if bal > 0:
