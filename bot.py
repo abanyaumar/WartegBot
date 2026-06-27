@@ -1122,6 +1122,12 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
         try: return datetime.date(int(p[2]), MONTHS_S.get(p[1],1), int(p[0]))
         except: return datetime.date(2000,1,1)
     sorted_rows = sorted(rows, key=parse_row_date)
+    # Deduplicate by date (keep last entry per date) — safety net in case Apps Script
+    # returns duplicate rows (re-entered/corrected data).
+    seen_d = {}
+    for r in sorted_rows:
+        seen_d[r.get("date", "")] = r
+    sorted_rows = sorted(seen_d.values(), key=parse_row_date)
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
         gofood_total = gf(sorted_rows)
