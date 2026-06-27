@@ -1086,33 +1086,39 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             mgr     = inv - kasbon_p2              # manager's 50% minus personal kasbon
             p3_cash = max(0, profit_p3 - pe_p3)   # cash at manager (pe_p3 from sheet, no KB deducted)
             bal     = inv - (p3_cash + kasbon_p2)  # positive = investor still owes manager
+            total_pendapatan = profit_p1 + profit_p2 + profit_p3 + gofood_total
+            gf_label = "GoFood/QRIS (laporan bulan)" if using_monthly_gofood else "\u26a0\ufe0f GoFood/QRIS (per hari, belum upload)"
             lines += [
-                "Periode ke-3 \u2014 <b>Rekap Bulanan</b>", "",
-                "P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ",") + ((" (pe BTK: -Rp " + format(pe_p1, ",") + ")") if pe_p1 > 0 else ""),
-                "P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ",") + " (kasbon mgr: Rp " + format(kasbon_p2, ",") + " \u2192 dipotong akhir)",
-                "P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
-                ("  Pengeluaran P3 (BTK+ops): -Rp " + format(pe_p3, ",")) if pe_p3 > 0 else "",
-                ("  + Kontrak Bangunan (fixed): -Rp " + format(kb, ",")) if kb > 0 else "",
-                ("GoFood (laporan bulan): +Rp " + format(gofood_total, ",")) if (gofood_total > 0 and using_monthly_gofood) else "",
-                ("\u26a0\ufe0f GoFood (per hari, belum upload laporan): +Rp " + format(gofood_total, ",")) if (gofood_total > 0 and not using_monthly_gofood) else "",
-                "Total Biaya Bersama: -Rp " + format(shared_pe, ","),
-                "Total Bulanan (bersih): <b>Rp " + format(total, ",") + "</b>", "",
-                "\U0001f4cb <i>Kasbon Manager (P2): Rp " + format(kasbon_p2, ",") + "</i>",
-                "<i>  \u2192 Dipotong dari bagian Manager, bukan biaya bersama</i>",
-                "Bagian Investor (50%): <b>Rp " + format(inv, ",") + "</b>",
-                "Bagian Manager (50% \u2212 kasbon): <b>Rp " + format(mgr, ",") + "</b>", "",
-                "\U0001f4b5 Uang di pengelola (P3): Rp " + format(p3_cash, ","),
-                "Kasbon dipegang mgr: Rp " + format(kasbon_p2, ","),
-                "Total dipegang Manager: <b>Rp " + format(p3_cash + kasbon_p2, ",") + "</b>",
-                "Sudah ditransfer P1+P2: Rp " + format(paid, ","), "",
+                "Periode ke-3 \u2014 <b>Rekap Bulanan</b>",
+                "====================", "",
+                "<b>PENDAPATAN:</b>",
+                "  P1 " + drange(p1) + " (" + str(len(p1)) + " hari): Rp " + format(profit_p1, ","),
+                "  P2 " + drange(p2) + " (" + str(len(p2)) + " hari): Rp " + format(profit_p2, ","),
+                "  P3 " + drange(p3) + " (" + str(len(p3)) + " hari): Rp " + format(profit_p3, ","),
+                ("  " + gf_label + ": Rp " + format(gofood_total, ",")) if gofood_total > 0 else "  GoFood/QRIS: Rp 0",
+                "  <b>Total Pendapatan: Rp " + format(total_pendapatan, ",") + "</b>", "",
+                "<b>BIAYA:</b>",
+                "  Pengeluaran Operasional: Rp " + format(pengeluaran - kasbon_p2, ","),
+                ("  Kontrak Bangunan: Rp " + format(kb, ",")) if kb > 0 else "",
+                "  <b>Total Biaya: Rp " + format(shared_pe, ",") + "</b>", "",
+                "<b>Keuntungan Total: Rp " + format(total, ",") + "</b>",
+                "<b>Keuntungan Masing2 Pihak: Rp " + format(inv, ",") + "</b>",
+                "====================", "",
+                "<b>PERHITUNGAN UANG:</b>",
+                "  Hak Pengelola: Rp " + format(inv, ","),
+                "  Kas Bon (dipotong dari hak pengelola): -Rp " + format(kasbon_p2, ","),
+                "  <b>Total Hak Pengelola (setelah kasbon): Rp " + format(mgr, ",") + "</b>", "",
+                "  Uang di Pengelola (kas P3): Rp " + format(p3_cash, ","),
+                "  Kas Bon di tangan pengelola: Rp " + format(kasbon_p2, ","),
+                "  <b>Total Uang di Pengelola: Rp " + format(p3_cash + kasbon_p2, ",") + "</b>",
+                "====================",
             ]
-            # positive bal = investor still owes manager; negative = manager owes investor
             if bal > 0:
-                lines.append("\u27a1\ufe0f Investor setor ke Manager: <b>Rp " + format(bal, ",") + "</b>")
+                lines.append("\u27a1\ufe0f <b>Investor setor ke Pengelola: Rp " + format(bal, ",") + "</b>")
             elif bal < 0:
-                lines.append("\u2b05\ufe0f Manager transfer ke Investor: <b>Rp " + format(abs(bal), ",") + "</b>")
+                lines.append("\u2b05\ufe0f <b>Pengelola transfer ke Investor: Rp " + format(abs(bal), ",") + "</b>")
             else:
-                lines.append("\u2705 Sudah seimbang, tidak ada transfer")
+                lines.append("\u2705 <b>Sudah seimbang, tidak ada transfer</b>")
         else:
             # Normal restaurants: all pengeluaran are shared costs, split 50/50
             total   = profit_p1 + profit_p2 + profit_p3 + gofood_total - pengeluaran
@@ -1191,15 +1197,21 @@ def build_ringkasan_msg(restaurant, s, period=1):
         day_lines.append("")
         day_lines.append("====================")
 
-    summary_lines = [
-        "<b>TOTAL:</b>",
-        "Total Pemasukan : Rp " + format(ti, ","),
-        "Total Belanja Harian: Rp " + format(to, ","),
-    ]
-    if pe > 0:
-        summary_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
-    summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
     profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2, kasbon_total, kasbon_p2, gofood_monthly if period == 3 else 0)
+    # For WKB Tuban P3, the profit_section already contains a complete breakdown —
+    # skip the raw TOTAL block to avoid redundant/confusing numbers.
+    is_wkb_tuban_p3 = (restaurant == "WKB Tuban" and period == 3 and profit_section)
+    if is_wkb_tuban_p3:
+        summary_lines = []
+    else:
+        summary_lines = [
+            "<b>TOTAL:</b>",
+            "Total Pemasukan : Rp " + format(ti, ","),
+            "Total Belanja Harian: Rp " + format(to, ","),
+        ]
+        if pe > 0:
+            summary_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
+        summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
     if profit_section:
         summary_lines.append(profit_section)
 
