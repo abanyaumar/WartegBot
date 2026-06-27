@@ -89,8 +89,8 @@ function saveMainReport(ss, restaurant, data) {
   const tb = (restaurant === "WKB Tuban") ? bp : (bw + bp);
   const k  = omzet - tb;
   const tgl=data.tanggal||new Date().toISOString().split("T")[0];
-  // Dates stored as display date (no offset); toDateStr reads them back in Jakarta timezone
-  const storedTgl = tgl;
+  // Store 1 day early — matches historical storage convention; fmtDate adds +1 for display
+  const storedTgl = prevDay(tgl);
   const lastRow=sheet.getLastRow();
   if (lastRow>1) {
     const dates=sheet.getRange(2,1,lastRow-1,1).getValues();
@@ -101,7 +101,7 @@ function saveMainReport(ss, restaurant, data) {
     });
     if(dup) return resp({status:"duplicate",message:"Data "+tgl+" sudah ada"});
   }
-  const tglDate = new Date(storedTgl + "T12:00:00+07:00");
+  const tglDate = new Date(storedTgl);
   sheet.appendRow([tglDate,omzet,bw,bp,tb,k,Number(data.gofood_order)||0,Number(data.gofood_net)||0,data.catatan||""]);
   const nr=sheet.getLastRow();
   sheet.getRange(nr,1).setNumberFormat("DD-MMM-YYYY");
@@ -140,8 +140,8 @@ function saveGofood(ss, restaurant, data) {
   if (data.tanggal) {
     const mainSheet = ss.getSheetByName(restaurant);
     if (mainSheet && mainSheet.getLastRow() > 1) {
-      // Dates stored as display dates — compare directly
-      const tgl = String(data.tanggal).substring(0, 10);
+      // Stored dates are 1 day early — compare against prevDay(tanggal)
+      const tgl = prevDay(String(data.tanggal).substring(0, 10));
       const dates = mainSheet.getRange(2, 1, mainSheet.getLastRow()-1, 1).getValues();
       for (let i = 0; i < dates.length; i++) {
         const rowDate = dates[i][0];
@@ -210,20 +210,32 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
   function getTargetRows(data) {
     // Sort ascending by date
     data.sort(function(a,b){ return new Date(a[0]) - new Date(b[0]); });
+
+    var filtered;
     if (startDateParam) {
-      // Dates are stored as display dates in Jakarta timezone (no offset).
-      // Filter directly by the provided start date range.
-      var startMs  = new Date(startDateParam + "T00:00:00+07:00").getTime();
-      var endMs    = startMs + (days - 1) * 86400000;
-      var adjStart = Utilities.formatDate(new Date(startMs), TZ, "yyyy-MM-dd");
-      var adjEnd   = Utilities.formatDate(new Date(endMs),   TZ, "yyyy-MM-dd");
-      return data.filter(function(row){
+      // Dates stored 1 day early (prevDay convention); shift adjStart back by 1 day to match.
+      var adjStartMs = new Date(startDateParam + "T12:00:00Z").getTime() - 86400000;
+      var adjStart   = Utilities.formatDate(new Date(adjStartMs), "UTC", "yyyy-MM-dd");
+      // End: (days-1) calendar days after adjStart (stored dates, 1-day-early)
+      var adjEndMs   = adjStartMs + (days - 1) * 86400000;
+      var adjEnd     = Utilities.formatDate(new Date(adjEndMs), "UTC", "yyyy-MM-dd");
+      filtered = data.filter(function(row){
         var ds = row[0] ? toDateStr(row[0]) : "";
         return ds >= adjStart && ds <= adjEnd;
       });
     } else {
-      return data.slice(Math.max(0, data.length - days));
+      filtered = data.slice(Math.max(0, data.length - days));
     }
+
+    // Deduplicate: if a date appears more than once (re-entry/correction),
+    // keep only the LAST row for that date (most recent entry = correction).
+    var seen = {};
+    var deduped = [];
+    for (var i = filtered.length - 1; i >= 0; i--) {
+      var ds = filtered[i][0] ? toDateStr(filtered[i][0]) : "";
+      if (ds && !seen[ds]) { seen[ds] = true; deduped.unshift(filtered[i]); }
+    }
+    return deduped;
   }
 
   const mainSheet = ss.getSheetByName(restaurant);
