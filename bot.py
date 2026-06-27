@@ -1279,11 +1279,17 @@ async def ringkasan_period_selected(update, ctx):
     label = ["","Periode 1 (Hari 1-10)","Periode 2 (Hari 11-20)","Periode 3 (Rekap Bulanan)"][period_map[q.data]]
     period_num = period_map[q.data]
     if period_num == 3:
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("30 Hari Terakhir", callback_data="rsum_latest")],
-            [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="rsum_manual")],
-            [InlineKeyboardButton("Batalkan", callback_data="cancel")],
-        ])
+        # P3 = monthly recap: always require a start date so the P1/P2/P3 row split
+        # aligns correctly (fetching "last N rows" breaks when there are closed days).
+        await q.edit_message_text(
+            "<b>" + restaurant + "</b> - Rekap Bulanan (P3)\n\n"
+            "Ketik <b>tanggal mulai P1</b> (hari pertama bulan itu), contoh:\n"
+            "<code>25 Mei 2026</code>\n"
+            "<code>25/05/2026</code>\n"
+            "<code>2026-05-25</code>\n\n"
+            "Bot akan otomatis hitung P1 (hari 1-10), P2 (11-20), P3 (21-30).",
+            parse_mode="HTML")
+        return RSUM_DATE
     else:
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("10 Hari Terakhir", callback_data="rsum_latest")],
