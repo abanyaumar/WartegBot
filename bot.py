@@ -276,8 +276,15 @@ def extract_pengeluaran(content_data, restaurant, is_image=False):
 def extract_gofood_report(image_bytes, restaurant):
     img = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
     prompt = (
-        "Screenshot laporan GoFood cabang " + restaurant + ".\n"
-        'OUTPUT JSON: {"periode":"","total_bruto":0,"total_netto":0,"jumlah_transaksi":0,"catatan":""}'
+        "Screenshot laporan pendapatan online cabang " + restaurant + ".\n"
+        "Laporan ini bisa dari GoFood, GrabFood, atau ringkasan Gojek Merchant (Ringkasan/Summary).\n"
+        "Pendapatan bisa berasal dari GoFood delivery, GoFood Pickup, QRIS, atau kombinasi.\n"
+        "Gunakan TOTAL PENJUALAN keseluruhan (bukan hanya baris GoFood).\n"
+        "Untuk 'total_bruto' dan 'total_netto': gunakan angka 'Penjualan' atau total keseluruhan.\n"
+        "Jika bruto tidak tersedia, samakan dengan netto.\n"
+        "Untuk 'jumlah_transaksi': total semua transaksi.\n"
+        "Untuk 'periode': isi dengan rentang tanggal atau bulan yang tertera (contoh: 'Jun 2026' atau '1-30 Jun 2026').\n"
+        'OUTPUT JSON ONLY: {"periode":"","total_bruto":0,"total_netto":0,"jumlah_transaksi":0,"catatan":""}'
     )
     try:
         resp = gemini_generate(contents=[prompt, img])
@@ -286,6 +293,9 @@ def extract_gofood_report(image_bytes, restaurant):
             d = json.loads(m.group())
             for f in ["total_bruto","total_netto","jumlah_transaksi"]:
                 d[f] = int(str(d.get(f,0)).replace(",","").replace(".","") or 0)
+            # If netto=0 but bruto>0, use bruto as netto (QRIS has no platform fee deduction)
+            if d["total_netto"] == 0 and d["total_bruto"] > 0:
+                d["total_netto"] = d["total_bruto"]
             return d
     except Exception as e:
         logger.error("GoFood error: " + str(e))
@@ -917,8 +927,8 @@ async def gofood_photo_received(update, ctx):
     f = await ctx.bot.get_file(photo.file_id)
     await update.message.reply_text("Membaca laporan GoFood...")
     data = extract_gofood_report(bytes(await f.download_as_bytearray()), restaurant)
-    if not data or data.get("total_netto",0) == 0:
-        await update.message.reply_text("Gagal membaca. Coba screenshot lebih jelas."); return GOFOOD_WAIT_PHOTO
+    if not data or (data.get("total_netto",0) == 0 and data.get("jumlah_transaksi",0) == 0):
+        await update.message.reply_text("Gagal membaca. Pastikan screenshot menampilkan total penjualan/pendapatan, lalu coba lagi."); return GOFOOD_WAIT_PHOTO
     ctx.user_data["gofood_data"] = data
     lines = ["<b>Laporan GoFood - " + restaurant + "</b>","--------------------",
              "Periode: <b>" + esc(data.get("periode","?")) + "</b>",
