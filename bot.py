@@ -1178,8 +1178,6 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             "\U0001f4c5 " + drange(sorted_rows),
             "  Keuntungan harian: Rp " + format(ke_total, ","),
             ("  Pengeluaran operasional P1: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
-            "  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-            "  Profit bersih: Rp " + format(profit, ","),
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
         ]
@@ -1194,8 +1192,6 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
             "\U0001f4c5 " + drange(sorted_rows),
             "  Keuntungan harian: Rp " + format(ke_total, ","),
             ("  Pengeluaran operasional P2: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
-            "  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-            "  Profit bersih: Rp " + format(profit, ","),
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
         ]
@@ -1369,13 +1365,14 @@ def build_ringkasan_msg(restaurant, s, period=1):
         pe_display = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe)
         pr_display = k - pe_display if period in (1, 2) else pr
         summary_lines = [
-            "<b>TOTAL:</b>",
-            "Total Pemasukan : Rp " + format(ti, ","),
-            "Total Belanja Harian: Rp " + format(to, ","),
+            "\U0001f4ca <b>TOTAL:</b>",
+            "\U0001f4b0 Total Pemasukan : Rp " + format(ti, ","),
+            "\U0001f6d2 Total Belanja Harian: Rp " + format(to, ","),
+            "\u2728 Keuntungan Harian: Rp " + format(k, ","),
         ]
         if pe_display > 0:
-            summary_lines.append("Pengeluaran Operasional: Rp " + format(pe_display, ","))
-        summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr_display, ",") + "</b>")
+            summary_lines.append("\U0001f4cb Pengeluaran Operasional: -Rp " + format(pe_display, ","))
+        summary_lines.append("<b>\U0001f4b5 PROFIT BERSIH: Rp " + format(pr_display, ",") + "</b>")
     if profit_section:
         summary_lines.append(profit_section)
 
