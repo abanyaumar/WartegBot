@@ -269,6 +269,8 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   let totalPengeluaranP1 = 0, totalPengeluaranP2 = 0, totalPengeluaranP3 = 0;
   let totalKasbon = 0, totalKasbonP1 = 0, totalKasbonP2 = 0;
+  // Accumulated item-level breakdown (combined across all matched periods)
+  let pengItems = {beras:0, pln:0, pdam:0, wifi:0, sampah:0, kasbon:0, gaji:0, lain_lain:0};
   if (pengSheet && pengSheet.getLastRow() > 1) {
     const rangeMonth = startDateParam ? startDateParam.substring(0, 7) : null;
     const pdata = pengSheet.getRange(2,1,pengSheet.getLastRow()-1,10).getValues();
@@ -314,6 +316,15 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
         if (matchTag === "P1") { totalPengeluaranP1 += amt; totalKasbonP1 += kasbon; }
         else if (matchTag === "P2") { totalPengeluaranP2 += amt; totalKasbonP2 += kasbon; }
         else if (matchTag === "P3") totalPengeluaranP3 += amt;
+        // Accumulate item-level details (cols B–I = indices 1–8)
+        pengItems.beras     += Number(row[1])||0;
+        pengItems.pln       += Number(row[2])||0;
+        pengItems.pdam      += Number(row[3])||0;
+        pengItems.wifi      += Number(row[4])||0;
+        pengItems.sampah    += Number(row[5])||0;
+        pengItems.kasbon    += Number(row[6])||0;
+        pengItems.gaji      += Number(row[7])||0;
+        pengItems.lain_lain += Number(row[8])||0;
       }
     });
   }
@@ -356,6 +367,7 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
     kasbon_total: totalKasbon,
     kasbon_p1: totalKasbonP1,
     kasbon_p2: totalKasbonP2,
+    peng_items: pengItems,
     days_counted: days,
     rows: dailyRows
   };

@@ -1444,7 +1444,260 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, co
     return buf
 
 
-def build_ringkasan_msg(restaurant, s, period=1):
+def build_p3_full_image(restaurant, periode_str, display_rows, p3_calc):
+    """
+    Build the full P3 (Rekap Bulanan) image:
+      - Top: 3-row aggregate table (Periode | Masuk | Belanja | Untung)
+      - Bottom: two-column summary table matching the manual ledger format
+        Left  → PERHITUNGAN KEUNTUNGAN (Pendapatan + Biaya itemised)
+        Right → PERHITUNGAN UANG (Hak Pengelola + Cash reconciliation)
+
+    p3_calc keys: profit_p1, profit_p2, profit_p3, gofood_total,
+                  kb, btk, peng_items (dict), shared_pe, total, inv,
+                  p3_cash, kasbon_p2, bal, p3_len (int, days in p3 group)
+    """
+    MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
+                "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
+                "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+
+    def _rp(n):
+        return "Rp {:,}".format(int(n))
+
+    def _date(d):
+        try:
+            p = d.split()
+            if not p[0].isdigit():
+                return d[:12]
+            return p[0].zfill(2) + "/" + str(MONTHS_N.get(p[1], "?"))
+        except Exception:
+            return d[:12]
+
+    # ── Aggregate table ────────────────────────────────────────────────
+    table_data = []
+    totals = [0, 0, 0]
+    for r in display_rows:
+        r_om = r.get("omzet", 0)
+        r_gf = r.get("gofood_net", 0)
+        r_k  = r.get("keuntungan", 0)
+        r_in = r_om + (0 if restaurant == "WKB Tuban" else r_gf)
+        r_bl = r_in - r_k
+        totals[0] += r_in; totals[1] += r_bl; totals[2] += r_k
+        table_data.append([_date(r.get("date", "?")), _rp(r_in), _rp(r_bl), _rp(r_k)])
+    table_data.append(["TOTAL", _rp(totals[0]), _rp(totals[1]), _rp(totals[2])])
+    n_rows  = len(table_data)
+    table_h = max(2.5, 0.42 * n_rows + 1.2)  # compact: 5 rows → ~3.3 in
+
+    # ── P3 calc values ──────────────────────────────────────────────────
+    profit_p1    = p3_calc["profit_p1"]
+    profit_p2    = p3_calc["profit_p2"]
+    profit_p3    = p3_calc["profit_p3"]
+    gofood_total = p3_calc["gofood_total"]
+    kb           = p3_calc["kb"]
+    btk          = p3_calc["btk"]
+    pi           = p3_calc.get("peng_items", {})
+    shared_pe    = p3_calc["shared_pe"]
+    total_k      = p3_calc["total"]
+    inv          = p3_calc["inv"]
+    p3_cash      = p3_calc["p3_cash"]
+    kasbon_p2    = p3_calc["kasbon_p2"]
+    bal          = p3_calc["bal"]
+    total_pend   = profit_p1 + profit_p2 + profit_p3 + gofood_total
+
+    is_wkb = (restaurant == "WKB Tuban")
+
+    # ── Left panel rows: (no, label, value, style) ─────────────────────
+    LP = []  # (no_str, label_str, value_str, style_str)
+    LP.append(("", "PENDAPATAN", "", "section"))
+    LP.append(("1", "10 hari periode ke 1",  _rp(profit_p1),    "data"))
+    LP.append(("2", "10 hari periode ke 2",  _rp(profit_p2),    "data"))
+    LP.append(("3", "10 hari periode ke 3",  _rp(profit_p3),    "data"))
+    if is_wkb:
+        LP.append(("4", "GRAB FOOD + QRIS", "Rp 0",             "data"))
+        LP.append(("5", "GO FOOD",           _rp(gofood_total), "data"))
+    else:
+        LP.append(("4", "GoFood / QRIS",     _rp(gofood_total), "data"))
+    LP.append(("", "TOTAL PENDAPATAN",       _rp(total_pend),   "bold"))
+    LP.append(("", "BIAYA", "",              "section"))
+    i = 1
+    wifi_v  = pi.get("wifi", 0)
+    beras_v = pi.get("beras", 0)
+    la_v    = pi.get("pln", 0) + pi.get("pdam", 0)
+    sampah_v = pi.get("sampah", 0) + pi.get("lain_lain", 0)
+    if wifi_v:
+        LP.append((str(i), "Biaya Bulanan Indihome", _rp(wifi_v),  "data")); i += 1
+    if kb:
+        LP.append((str(i), "Kontrak Bangunan",       _rp(kb),      "data")); i += 1
+    if btk:
+        LP.append((str(i), "Biaya Tenaga Kerja",     _rp(btk),     "data")); i += 1
+    if beras_v:
+        LP.append((str(i), "Beras",                  _rp(beras_v), "data")); i += 1
+    if la_v:
+        LP.append((str(i), "Listrik & Air",          _rp(la_v),    "data")); i += 1
+    if sampah_v:
+        LP.append((str(i), "Iuran Sampah & Lain",    _rp(sampah_v),"data")); i += 1
+    LP.append(("", "TOTAL BIAYA",                    _rp(shared_pe),    "bold"))
+    LP.append(("", "KEUNTUNGAN TOTAL",               _rp(total_k),      "bold"))
+    LP.append(("", "KEUNTUNGAN MASING MASING PIHAK", _rp(inv),          "highlight"))
+
+    # ── Right panel rows: (label, value, style) ────────────────────────
+    RP = []
+    RP.append(("HAK UANG PENGELOLA", "",    "section"))
+    RP.append(("- KEUNTUNGAN MASING2 PIHAK", _rp(inv), "data"))
+    RP.append(("- BAYAR KARYAWAN",           "0",       "data"))
+    RP.append(("TOTAL HAK PENGELOLA",        _rp(inv),  "bold"))
+    RP.append(("", "", "spacer"))
+    RP.append(("UANG DI PENGELOLA",         _rp(p3_cash),          "data"))
+    RP.append(("KAS BON",                   _rp(kasbon_p2),        "data"))
+    RP.append(("", "", "spacer"))
+    RP.append(("TOTAL UANG DI PENGELOLA",   _rp(p3_cash + kasbon_p2), "bold"))
+    RP.append(("", "", "spacer"))
+    if bal > 0:
+        RP.append(("INVESTOR SETOR KE PENGELOLA", _rp(bal),      "red"))
+    elif bal < 0:
+        RP.append(("PENGELOLA TRANSFER KE INVESTOR",  _rp(abs(bal)), "red"))
+    else:
+        RP.append(("SUDAH SEIMBANG", "",                             "green"))
+
+    # ── Layout ──────────────────────────────────────────────────────────
+    # Estimate summary panel height from the number of non-spacer rows
+    n_lp = len([r for r in LP if r[3] != "spacer"])
+    n_rp = len([r for r in RP if r[2] != "spacer"])
+    sum_rows = max(n_lp, n_rp) + 3
+    sum_h    = max(4.0, 0.32 * sum_rows + 1.0)
+
+    fig = plt.figure(figsize=(13, table_h + sum_h + 0.2), facecolor="white")
+    gs  = fig.add_gridspec(2, 2,
+                           height_ratios=[table_h, sum_h],
+                           width_ratios=[1.1, 0.9],
+                           hspace=0.02, wspace=0.04)
+    ax_tbl = fig.add_subplot(gs[0, :])  # spans both columns
+    ax_L   = fig.add_subplot(gs[1, 0])
+    ax_R   = fig.add_subplot(gs[1, 1])
+
+    # ── Top title + aggregate table ─────────────────────────────────────
+    ax_tbl.axis("off")
+    ax_tbl.set_title(
+        "Detail Harian - " + restaurant + "\n" + periode_str,
+        fontsize=13, fontweight="bold", pad=14, color="#2C3E50"
+    )
+    tbl = ax_tbl.table(
+        cellText=table_data,
+        colLabels=["Periode", "Masuk", "Belanja", "Untung"],
+        loc="upper center", cellLoc="right"
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(10)
+    tbl.auto_set_column_width([0, 1, 2, 3])
+    tbl.scale(1, 1.7)
+    for j in range(4):
+        c = tbl[0, j]
+        c.set_facecolor("#2C3E50"); c.set_text_props(color="white", fontweight="bold",
+                                                      ha="center" if j == 0 else "right")
+        c.set_edgecolor("white")
+    for i in range(1, n_rows + 1):
+        is_tot = (i == n_rows)
+        for j in range(4):
+            c = tbl[i, j]
+            if is_tot:
+                c.set_facecolor("#D5E8D4")
+                c.set_text_props(fontweight="bold", ha="center" if j == 0 else "right")
+            else:
+                c.set_facecolor("#FFFFFF" if i % 2 else "#F4F6F8")
+                c.set_text_props(ha="center" if j == 0 else "right")
+            c.set_edgecolor("#DEE2E6")
+
+    # ── Helper: render a panel as a matplotlib table ────────────────────
+    HDR  = "#2C3E50"  # dark header bg
+    SEC  = "#E8EAF0"  # section row bg
+    BOL  = "#F0F4FF"  # bold row bg
+    HLT  = "#FFF9C4"  # highlight row bg (yellow)
+    RED  = "#FFEBEE"  # red row bg
+    GRN  = "#E8F5E9"  # green row bg
+    WHT  = "#FFFFFF"
+    ALT  = "#F9FAFB"
+
+    def _draw_left(ax):
+        ax.axis("off")
+        # Build cell matrix: skip spacers, row = [no, label, value]
+        rows_in = [(no, lb, vl, st) for no, lb, vl, st in LP if st != "spacer"]
+        cell_text  = [[r[0], r[1], r[2]] for r in rows_in]
+        col_labels = ["No", "Keterangan", "Nilai"]
+        t = ax.table(cellText=cell_text, colLabels=col_labels,
+                     loc="upper center", cellLoc="left",
+                     colWidths=[0.06, 0.60, 0.34])
+        t.auto_set_font_size(False); t.set_fontsize(9)
+        t.scale(1, 1.55)
+        # Header row
+        for j, lbl in enumerate(col_labels):
+            c = t[0, j]
+            c.set_facecolor(HDR); c.set_text_props(color="white", fontweight="bold",
+                                                    ha="center")
+            c.set_edgecolor("white")
+        # Data rows
+        for idx, (no, lb, vl, st) in enumerate(rows_in):
+            row_i = idx + 1
+            if st == "section":
+                bg = SEC; fw = "bold"; tc = "#2C3E50"
+            elif st == "bold":
+                bg = BOL; fw = "bold"; tc = "#1A237E"
+            elif st == "highlight":
+                bg = HLT; fw = "bold"; tc = "#B71C1C"
+            else:
+                bg = WHT if idx % 2 == 0 else ALT; fw = "normal"; tc = "#2C3E50"
+            for j in range(3):
+                c = t[row_i, j]
+                c.set_facecolor(bg); c.set_edgecolor("#DEE2E6")
+                ha = "right" if j == 2 else ("center" if j == 0 else "left")
+                c.set_text_props(fontweight=fw, color=tc, ha=ha)
+        ax.set_title("PERHITUNGAN KEUNTUNGAN", fontsize=10, fontweight="bold",
+                     color="#2C3E50", pad=6, loc="left")
+
+    def _draw_right(ax):
+        ax.axis("off")
+        rows_in = [(lb, vl, st) for lb, vl, st in RP if st != "spacer"]
+        cell_text  = [[r[0], r[1]] for r in rows_in]
+        col_labels = ["Keterangan", "Nilai"]
+        t = ax.table(cellText=cell_text, colLabels=col_labels,
+                     loc="upper center", cellLoc="left",
+                     colWidths=[0.66, 0.34])
+        t.auto_set_font_size(False); t.set_fontsize(9)
+        t.scale(1, 1.55)
+        for j, lbl in enumerate(col_labels):
+            c = t[0, j]
+            c.set_facecolor(HDR); c.set_text_props(color="white", fontweight="bold",
+                                                    ha="center")
+            c.set_edgecolor("white")
+        for idx, (lb, vl, st) in enumerate(rows_in):
+            row_i = idx + 1
+            if st == "section":
+                bg = SEC; fw = "bold"; tc = "#2C3E50"
+            elif st == "bold":
+                bg = BOL; fw = "bold"; tc = "#1A237E"
+            elif st == "red":
+                bg = RED; fw = "bold"; tc = "#C62828"
+            elif st == "green":
+                bg = GRN; fw = "bold"; tc = "#2E7D32"
+            else:
+                bg = WHT if idx % 2 == 0 else ALT; fw = "normal"; tc = "#2C3E50"
+            for j in range(2):
+                c = t[row_i, j]
+                c.set_facecolor(bg); c.set_edgecolor("#DEE2E6")
+                ha = "right" if j == 1 else "left"
+                c.set_text_props(fontweight=fw, color=tc, ha=ha)
+        ax.set_title("PERHITUNGAN UANG", fontsize=10, fontweight="bold",
+                     color="#2C3E50", pad=6, loc="left")
+
+    _draw_left(ax_L)
+    _draw_right(ax_R)
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                facecolor="white", edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
     """Returns a list of message parts to send (split to stay under Telegram 4096 limit)."""
     pe    = s.get("total_pengeluaran", 0)
     pe_p1 = s.get("pengeluaran_p1", 0)
@@ -1598,101 +1851,145 @@ async def send_ringkasan(update, ctx, restaurant, s, period):
     rows        = s.get("rows", [])
     periode_str = s.get("periode", "-")
 
-    summary_data = None
-    if rows:
-        pe           = s.get("total_pengeluaran", 0)
-        pe_p1        = s.get("pengeluaran_p1", 0)
-        pe_p2        = s.get("pengeluaran_p2", 0)
-        kasbon_total = s.get("kasbon_total", 0)
-        kasbon_p2    = s.get("kasbon_p2", 0)
-        gofood_monthly = s.get("total_gofood_netto", 0)
+    if not rows:
+        parts = build_ringkasan_msg(restaurant, s, period)
+        for part in parts:
+            await update.message.reply_text(part, parse_mode="HTML")
+        return
 
-        om = sum(r.get("omzet", 0) for r in rows)
-        gf = sum(r.get("gofood_net", 0) for r in rows)
-        bw = sum(r.get("belanja_warung", 0) for r in rows)
-        bl = sum(r.get("total_belanja", 0) for r in rows)
-        k  = sum(r.get("keuntungan", 0) for r in rows)
-        ti = om if restaurant == "WKB Tuban" else om + gf
-        to = bl - bw if restaurant == "WKB Tuban" else bl
-        pe_display = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe)
-        pr_display = k - pe_display if period in (1, 2) else k - pe
+    pe           = s.get("total_pengeluaran", 0)
+    pe_p1        = s.get("pengeluaran_p1", 0)
+    pe_p2        = s.get("pengeluaran_p2", 0)
+    kasbon_total = s.get("kasbon_total", 0)
+    kasbon_p2    = s.get("kasbon_p2", 0)
+    gofood_monthly = s.get("total_gofood_netto", 0)
+    peng_items   = s.get("peng_items", {})
 
-        total_lines = [
-            "Total Pemasukan      : Rp {:,}".format(ti),
-            "Total Belanja Harian : Rp {:,}".format(to),
-            "Keuntungan Harian    : Rp {:,}".format(k),
-        ]
-        if pe_display > 0:
-            total_lines.append("Pengeluaran Op.      : -Rp {:,}".format(pe_display))
-        total_lines.append("PROFIT BERSIH        : Rp {:,}".format(pr_display))
+    om = sum(r.get("omzet", 0) for r in rows)
+    gf = sum(r.get("gofood_net", 0) for r in rows)
+    bw = sum(r.get("belanja_warung", 0) for r in rows)
+    bl = sum(r.get("total_belanja", 0) for r in rows)
+    k  = sum(r.get("keuntungan", 0) for r in rows)
 
-        profit_section = calculate_profit_sharing(
-            restaurant, rows, period,
-            pengeluaran=pe_display, pe_p1=pe_p1, pe_p2=pe_p2,
-            kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
-            gofood_monthly=gofood_monthly if period == 3 else 0
-        )
-        bagi_lines = []
-        if profit_section:
-            for line in profit_section.split("\n"):
-                clean = _clean_for_image(line)
-                if clean:
-                    bagi_lines.append(clean)
+    # ── Sort helpers ───────────────────────────────────────────────────
+    MONTHS_S = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
+                "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
+                "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+    def _sk(r):
+        p = r.get("date","").split()
+        try: return datetime.date(int(p[2]), MONTHS_S.get(p[1],1), int(p[0]))
+        except: return datetime.date(2000,1,1)
+    def _agg(rlist, label):
+        return {"date": label,
+                "omzet":          sum(r.get("omzet",0)          for r in rlist),
+                "gofood_net":     sum(r.get("gofood_net",0)     for r in rlist),
+                "belanja_warung": sum(r.get("belanja_warung",0)  for r in rlist),
+                "total_belanja":  sum(r.get("total_belanja",0)   for r in rlist),
+                "keuntungan":     sum(r.get("keuntungan",0)      for r in rlist)}
 
-        summary_data = {"total_lines": total_lines, "bagi_lines": bagi_lines}
+    try:
+        loop = asyncio.get_event_loop()
 
-    if rows:
-        try:
-            loop = asyncio.get_event_loop()
-            # For P3 (Rekap Bulanan): aggregate 30 daily rows into 3 period rows so the
-            # table stays compact. Pass "col_first" label so _date() renders "Periode" column.
-            if period == 3 and len(rows) > 10:
-                MONTHS_S = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
-                            "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
-                            "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
-                def _sk(r):
-                    p = r.get("date","").split()
-                    try: return datetime.date(int(p[2]), MONTHS_S.get(p[1],1), int(p[0]))
-                    except: return datetime.date(2000,1,1)
-                sr = sorted(rows, key=_sk)
-                def _agg(rlist, label):
-                    return {"date": label,
-                            "omzet": sum(r.get("omzet",0) for r in rlist),
-                            "gofood_net": sum(r.get("gofood_net",0) for r in rlist),
-                            "belanja_warung": sum(r.get("belanja_warung",0) for r in rlist),
-                            "total_belanja": sum(r.get("total_belanja",0) for r in rlist),
-                            "keuntungan": sum(r.get("keuntungan",0) for r in rlist)}
-                p1r, p2r, p3r = sr[:10], sr[10:20], sr[20:]
-                display_rows = [
-                    _agg(p1r, "P1 ({} hr)".format(len(p1r))),
-                    _agg(p2r, "P2 ({} hr)".format(len(p2r))),
-                    _agg(p3r, "P3 ({} hr)".format(len(p3r))),
-                ]
-                col_first = "Periode"
+        if period == 3 and len(rows) > 10:
+            # ── P3: two-column structured image ───────────────────────
+            sr  = sorted(rows, key=_sk)
+            p1r, p2r, p3r = sr[:10], sr[10:20], sr[20:]
+            display_rows = [
+                _agg(p1r, "P1 ({} hr)".format(len(p1r))),
+                _agg(p2r, "P2 ({} hr)".format(len(p2r))),
+                _agg(p3r, "P3 ({} hr)".format(len(p3r))),
+            ]
+
+            # Compute P3 profit-sharing values (mirrors calculate_profit_sharing)
+            def prof(lst): return sum(r.get("keuntungan",0) for r in lst)
+            profit_p1 = prof(p1r); profit_p2 = prof(p2r); profit_p3 = prof(p3r)
+            gofood_daily_sum = sum(r.get("gofood_net",0) for r in sr)
+            gofood_total = gofood_monthly if gofood_monthly > 0 else gofood_daily_sum
+
+            kb  = MONTHLY_EXPENSES.get(restaurant, {}).get("kb", 0)
+            btk = MONTHLY_EXPENSES.get(restaurant, {}).get("btk", 0)
+            pe_p3 = pe - pe_p1 - pe_p2
+
+            if restaurant == "WKB Tuban" and kasbon_p2 > 0:
+                shared_pe = pe - kasbon_p2 + kb
+                total_k   = profit_p1 + profit_p2 + profit_p3 + gofood_total - shared_pe
+                inv       = math.ceil(total_k / 2)
+                p3_cash   = max(0, profit_p3 - pe_p3)
+                bal       = inv - (p3_cash + kasbon_p2)
             else:
-                display_rows = rows
-                col_first = "Tgl"
+                shared_pe = pe + kb if restaurant == "WKB Tuban" else pe
+                total_k   = profit_p1 + profit_p2 + profit_p3 + gofood_total - shared_pe
+                inv       = total_k // 2
+                paid_p1   = max(0, profit_p1 - pe_p1)
+                paid_p2   = max(0, profit_p2 - pe_p2)
+                p3_cash   = paid_p1 + paid_p2  # already transferred
+                bal       = inv - p3_cash
 
+            p3_calc = {
+                "profit_p1": profit_p1, "profit_p2": profit_p2, "profit_p3": profit_p3,
+                "gofood_total": gofood_total,
+                "kb": kb, "btk": btk,
+                "peng_items": peng_items,
+                "shared_pe": shared_pe, "total": total_k, "inv": inv,
+                "p3_cash": p3_cash, "kasbon_p2": kasbon_p2, "bal": bal,
+            }
             buf = await loop.run_in_executor(
-                None, lambda: build_daily_table_image(
-                    display_rows, restaurant, periode_str, summary_data,
-                    col_first=col_first)
+                None, lambda: build_p3_full_image(restaurant, periode_str, display_rows, p3_calc)
             )
-            title = ("Ringkasan Bulanan" if period == 3 else "Ringkasan 10 Hari")
-            await ctx.bot.send_photo(
-                chat_id=update.effective_chat.id,
-                photo=buf,
-                caption="<b>" + title + " - " + restaurant + "</b>\nPeriode: " + periode_str,
-                parse_mode="HTML"
+
+        else:
+            # ── P1/P2: original table + text summary ──────────────────
+            ti = om if restaurant == "WKB Tuban" else om + gf
+            to = bl - bw if restaurant == "WKB Tuban" else bl
+            pe_display = pe_p1 if period == 1 else pe_p2
+            pr_display = k - pe_display
+
+            total_lines = [
+                "Total Pemasukan      : Rp {:,}".format(ti),
+                "Total Belanja Harian : Rp {:,}".format(to),
+                "Keuntungan Harian    : Rp {:,}".format(k),
+            ]
+            if pe_display > 0:
+                total_lines.append("Pengeluaran Op.      : -Rp {:,}".format(pe_display))
+            total_lines.append("PROFIT BERSIH        : Rp {:,}".format(pr_display))
+
+            profit_section = calculate_profit_sharing(
+                restaurant, rows, period,
+                pengeluaran=pe_display, pe_p1=pe_p1, pe_p2=pe_p2,
+                kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
+                gofood_monthly=0
             )
-            return
-        except Exception as e:
-            logger.error("Table image failed, falling back to text: %s", e)
+            bagi_lines = []
+            if profit_section:
+                for line in profit_section.split("\n"):
+                    clean = _clean_for_image(line)
+                    if clean and not re.match(r'^=+$', clean):
+                        bagi_lines.append(clean)
+
+            summary_data = {"total_lines": total_lines, "bagi_lines": bagi_lines}
+            buf = await loop.run_in_executor(
+                None, lambda: build_daily_table_image(rows, restaurant, periode_str, summary_data)
+            )
+
+        title = "Ringkasan Bulanan" if period == 3 else "Ringkasan 10 Hari"
+        await ctx.bot.send_photo(
+            chat_id=update.effective_chat.id,
+            photo=buf,
+            caption="<b>" + title + " - " + restaurant + "</b>\nPeriode: " + periode_str,
+            parse_mode="HTML"
+        )
+        return
+
+    except Exception as e:
+        logger.error("Table image failed, falling back to text: %s", e)
+        import traceback; logger.error(traceback.format_exc())
 
     # Fallback: send as text messages
     parts = build_ringkasan_msg(restaurant, s, period)
     for part in parts:
         await update.message.reply_text(part, parse_mode="HTML")
+
+
 
 
 async def cancel(update, ctx):
