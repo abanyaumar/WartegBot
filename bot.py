@@ -1268,6 +1268,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     pe_p2 = s.get("pengeluaran_p2", 0)
     pe_p3 = s.get("pengeluaran_p3", 0)
     kasbon_total = s.get("kasbon_total", 0)
+    kasbon_p1    = s.get("kasbon_p1", 0)
     kasbon_p2    = s.get("kasbon_p2", 0)
     gofood_monthly = s.get("total_gofood_netto", 0)  # monthly GoFood report total (authoritative for P3)
     rows = s.get("rows", [])
@@ -1311,7 +1312,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
 
     profit_section = calculate_profit_sharing(
         restaurant, rows, period,
-        pengeluaran = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe),
+        pengeluaran = (pe_p1 - kasbon_p1) if period == 1 else ((pe_p2 - kasbon_p2) if period == 2 else pe),
         pe_p1=pe_p1, pe_p2=pe_p2,
         kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
         gofood_monthly=gofood_monthly if period == 3 else 0
@@ -1322,12 +1323,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     if is_wkb_tuban_p3:
         summary_lines = []
     else:
-        summary_lines = [
-            "<b>TOTAL:</b>",
-            "Total Pemasukan : Rp " + format(ti, ","),
-            "Total Belanja Harian: Rp " + format(to, ","),
-        ]
-        pe_display = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe)
+        pe_display = (pe_p1 - kasbon_p1) if period == 1 else ((pe_p2 - kasbon_p2) if period == 2 else pe)
         pr_display = k - pe_display if period in (1, 2) else pr
         summary_lines = [
             "<b>TOTAL:</b>",
