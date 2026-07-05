@@ -1479,11 +1479,16 @@ async def ringkasan_date_input(update, ctx):
     return ConversationHandler.END
 
 def _needs_kasbon_prompt(s, period):
-    """Return True when kasbon is missing from Apps Script response and period is P1 or P2."""
+    """Return True when Apps Script hasn't returned kasbon for a restaurant that uses it.
+    Uses MONTHLY_EXPENSES to detect kasbon-using restaurants (have 'btk_kasbon' key).
+    """
+    restaurant = s.get("restaurant", "")
+    if not MONTHLY_EXPENSES.get(restaurant, {}).get("btk_kasbon"):
+        return False  # This restaurant doesn't use kasbon
     if period == 1:
-        return s.get("pengeluaran_p1", 0) > 0 and s.get("kasbon_p1", 0) == 0
+        return s.get("kasbon_p1", 0) == 0
     if period == 2:
-        return s.get("pengeluaran_p2", 0) > 0 and s.get("kasbon_p2", 0) == 0
+        return s.get("kasbon_p2", 0) == 0
     return False
 
 async def _prompt_kasbon(send_fn, ctx, restaurant, s, period):
