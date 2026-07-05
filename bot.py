@@ -1437,7 +1437,8 @@ async def ringkasan_date_option_selected(update, ctx):
         s = fetch_summary(restaurant, days=days)
         if not s or s.get("status") == "error":
             await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
-        if _needs_kasbon_prompt(s, period):
+        uses_kasbon = bool(MONTHLY_EXPENSES.get(restaurant, {}).get("btk_kasbon"))
+        if uses_kasbon and _needs_kasbon_prompt(s, period):
             ctx.user_data["rsum_s"] = s
             return await _prompt_kasbon(q.message.reply_text, ctx, restaurant, s, period)
         await send_ringkasan(q.message.reply_text, restaurant, s, period)
@@ -1472,34 +1473,35 @@ async def ringkasan_date_input(update, ctx):
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
-    if _needs_kasbon_prompt(s, period):
+    uses_kasbon = bool(MONTHLY_EXPENSES.get(restaurant, {}).get("btk_kasbon"))
+    if uses_kasbon and _needs_kasbon_prompt(s, period):
         ctx.user_data["rsum_s"] = s
         return await _prompt_kasbon(update.message.reply_text, ctx, restaurant, s, period)
     await send_ringkasan(update.message.reply_text, restaurant, s, period)
     return ConversationHandler.END
 
 def _needs_kasbon_prompt(s, period):
-    """Return True when Apps Script hasn't returned kasbon for a restaurant that uses it.
-    Uses MONTHLY_EXPENSES to detect kasbon-using restaurants (have 'btk_kasbon' key).
+    """Return True for restaurants with btk_kasbon config on P1/P2.
+    Always prompts — regardless of what Apps Script returned.
     """
-    restaurant = s.get("restaurant", "")
-    if not MONTHLY_EXPENSES.get(restaurant, {}).get("btk_kasbon"):
-        return False  # This restaurant doesn't use kasbon
-    if period == 1:
-        return s.get("kasbon_p1", 0) == 0
-    if period == 2:
-        return s.get("kasbon_p2", 0) == 0
-    return False
+    # Use the restaurant from ctx (passed as arg) not from s, to avoid key-miss issues
+    # This function is called with the restaurant name directly in the callers below.
+    # We keep this simple: always True for P1/P2 — callers already guard by restaurant.
+    return period in (1, 2)
 
 async def _prompt_kasbon(send_fn, ctx, restaurant, s, period):
-    """Ask user for kasbon amount and return RSUM_KASBON state."""
+    """Ask user to confirm kasbon amount for P1/P2 bagi hasil."""
     pe = s.get("pengeluaran_p1", 0) if period == 1 else s.get("pengeluaran_p2", 0)
+    existing = s.get("kasbon_p1", 0) if period == 1 else s.get("kasbon_p2", 0)
     label = "P1 (kasbon karyawan)" if period == 1 else "P2 (kasbon manajer)"
+    hint = ("\n✅ Terdeteksi otomatis: <b>Rp " + format(existing, ",") + "</b>\n(Konfirmasi dengan mengetik ulang, atau koreksi jika salah)"
+            if existing > 0
+            else "\n⚠️ Tidak terdeteksi otomatis — ketik jumlah kasbon.")
     await send_fn(
         "💬 <b>Konfirmasi Kasbon " + label + "</b>\n\n"
-        "Pengeluaran " + ("P1" if period == 1 else "P2") + " terdeteksi: <b>Rp " + format(pe, ",") + "</b>\n"
-        "Kasbon belum terdeteksi otomatis.\n\n"
-        "Ketik jumlah kasbon " + ("P1" if period == 1 else "P2") + " (atau <code>0</code> jika tidak ada):\n"
+        "Pengeluaran " + ("P1" if period == 1 else "P2") + ": <b>Rp " + format(pe, ",") + "</b>"
+        + hint + "\n\n"
+        "Ketik jumlah kasbon (atau <code>0</code> jika tidak ada):\n"
         "<i>Contoh: 460769</i>",
         parse_mode="HTML"
     )
