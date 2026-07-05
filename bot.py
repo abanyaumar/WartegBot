@@ -1168,35 +1168,29 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     sorted_rows = sorted(seen_d.values(), key=parse_row_date)
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
-        gofood_total = gf(sorted_rows)
         ke_total = prof(sorted_rows)
-        # WKB Tuban: GoFood is held by manager and settled at P3 — do NOT add to P1 transfer.
-        # All expenses (including kasbon) are real cash outflows from the box.
         is_wkb = restaurant == "WKB Tuban"
+        gofood_total = gf(sorted_rows)
         income_for_transfer = ke_total if is_wkb else ke_total + gofood_total
         profit = max(0, income_for_transfer - pengeluaran)
         lines += [
             "Periode ke-1 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
             "  Keuntungan harian: Rp " + format(ke_total, ","),
-            ("  GoFood: Rp " + format(gofood_total, ",") + " <i>(diselesaikan di P3)</i>") if gofood_total > 0 and is_wkb else
-            ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
             ("  Pengeluaran operasional P1: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
         ]
     elif period == 2:
-        gofood_total = gf(sorted_rows)
         ke_total = prof(sorted_rows)
         is_wkb = restaurant == "WKB Tuban"
+        gofood_total = gf(sorted_rows)
         income_for_transfer = ke_total if is_wkb else ke_total + gofood_total
         profit = max(0, income_for_transfer - pengeluaran)
         lines += [
             "Periode ke-2 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
             "  Keuntungan harian: Rp " + format(ke_total, ","),
-            ("  GoFood: Rp " + format(gofood_total, ",") + " <i>(diselesaikan di P3)</i>") if gofood_total > 0 and is_wkb else
-            ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
             ("  Pengeluaran operasional P2: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
