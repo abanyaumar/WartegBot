@@ -1131,23 +1131,27 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     lines = ["", "====================", "<b>\U0001f4b0 BAGI HASIL:</b>"]
     if period == 1:
         gofood_total = gf(sorted_rows)
-        profit = max(0, prof(sorted_rows) + gofood_total - pengeluaran)
+        ke_total = prof(sorted_rows)
+        profit = max(0, ke_total + gofood_total - pengeluaran)
         lines += [
             "Periode ke-1 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
+            "  Keuntungan harian: Rp " + format(ke_total, ","),
             ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
-            ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
+            ("  Pengeluaran operasional P1: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
         ]
     elif period == 2:
         gofood_total = gf(sorted_rows)
-        profit = max(0, prof(sorted_rows) + gofood_total - pengeluaran)
+        ke_total = prof(sorted_rows)
+        profit = max(0, ke_total + gofood_total - pengeluaran)
         lines += [
             "Periode ke-2 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
+            "  Keuntungan harian: Rp " + format(ke_total, ","),
             ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
-            ("  Pengeluaran operasional: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
+            ("  Pengeluaran operasional P2: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
             "<i>(100% profit bersih periode ini)</i>",
         ]
@@ -1305,7 +1309,13 @@ def build_ringkasan_msg(restaurant, s, period=1):
         day_lines.append("")
         day_lines.append("====================")
 
-    profit_section = calculate_profit_sharing(restaurant, rows, period, pe, pe_p1, pe_p2, kasbon_total, kasbon_p2, gofood_monthly if period == 3 else 0)
+    profit_section = calculate_profit_sharing(
+        restaurant, rows, period,
+        pengeluaran = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe),
+        pe_p1=pe_p1, pe_p2=pe_p2,
+        kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
+        gofood_monthly=gofood_monthly if period == 3 else 0
+    )
     # For WKB Tuban P3, the profit_section already contains a complete breakdown —
     # skip the raw TOTAL block to avoid redundant/confusing numbers.
     is_wkb_tuban_p3 = (restaurant == "WKB Tuban" and period == 3 and profit_section)
@@ -1317,9 +1327,16 @@ def build_ringkasan_msg(restaurant, s, period=1):
             "Total Pemasukan : Rp " + format(ti, ","),
             "Total Belanja Harian: Rp " + format(to, ","),
         ]
-        if pe > 0:
-            summary_lines.append("Pengeluaran Operasional: Rp " + format(pe, ","))
-        summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr, ",") + "</b>")
+        pe_display = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe)
+        pr_display = k - pe_display if period in (1, 2) else pr
+        summary_lines = [
+            "<b>TOTAL:</b>",
+            "Total Pemasukan : Rp " + format(ti, ","),
+            "Total Belanja Harian: Rp " + format(to, ","),
+        ]
+        if pe_display > 0:
+            summary_lines.append("Pengeluaran Operasional: Rp " + format(pe_display, ","))
+        summary_lines.append("<b>PROFIT BERSIH: Rp " + format(pr_display, ",") + "</b>")
     if profit_section:
         summary_lines.append(profit_section)
 
