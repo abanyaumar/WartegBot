@@ -1307,15 +1307,16 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
 def _clean_for_image(text):
     """Strip HTML tags and emoji characters for plain matplotlib text rendering."""
     text = re.sub(r'<[^>]+>', '', text or "")
-    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
-    text = re.sub(r'[\u2600-\u27BF\u2B00-\u2BFF\uFE00-\uFE0F]', '', text)
+    # Replace arrows BEFORE emoji strip — \u27a1 (➡) and \u2b05 (⬅) are in the stripped range
     text = text.replace('\u2192', '->').replace('\u27a1\ufe0f', '->').replace('\u27a1', '->')
     text = text.replace('\u2190', '<-').replace('\u2b05\ufe0f', '<-').replace('\u2b05', '<-')
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+    text = re.sub(r'[\u2600-\u27BF\u2B00-\u2BFF\uFE00-\uFE0F]', '', text)
     text = text.replace('&amp;', '&').replace('&nbsp;', ' ')
     return re.sub(r' +', ' ', text).strip()
 
 
-def build_daily_table_image(rows, restaurant, periode_str, summary_data=None):
+def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, col_first="Tgl"):
     """Render daily detail rows + optional summary as a styled PNG; returns BytesIO."""
     MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
                 "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
@@ -1324,9 +1325,11 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None):
     def _date(d):
         try:
             p = d.split()
+            if not p[0].isdigit():
+                return d[:12]   # period labels like "P1 (10 hr)" pass through
             return p[0].zfill(2) + "/" + str(MONTHS_N.get(p[1], "?"))
         except Exception:
-            return d[:5]
+            return d[:12]
 
     def _rp(n):
         return "Rp {:,}".format(n)
@@ -1343,7 +1346,7 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None):
         table_data.append([_date(r.get("date", "?")), _rp(r_in), _rp(r_bl), _rp(r_k)])
     table_data.append(["TOTAL", _rp(totals[0]), _rp(totals[1]), _rp(totals[2])])
 
-    col_labels = ["Tgl", "Masuk", "Belanja", "Untung"]
+    col_labels = [col_first, "Masuk", "Belanja", "Untung"]
     n_rows     = len(table_data)
 
     table_h = max(4.0, 0.5 * n_rows + 2.0)
@@ -1641,8 +1644,39 @@ async def send_ringkasan(update, ctx, restaurant, s, period):
     if rows:
         try:
             loop = asyncio.get_event_loop()
+            # For P3 (Rekap Bulanan): aggregate 30 daily rows into 3 period rows so the
+            # table stays compact. Pass "col_first" label so _date() renders "Periode" column.
+            if period == 3 and len(rows) > 10:
+                MONTHS_S = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
+                            "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
+                            "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+                def _sk(r):
+                    p = r.get("date","").split()
+                    try: return datetime.date(int(p[2]), MONTHS_S.get(p[1],1), int(p[0]))
+                    except: return datetime.date(2000,1,1)
+                sr = sorted(rows, key=_sk)
+                def _agg(rlist, label):
+                    return {"date": label,
+                            "omzet": sum(r.get("omzet",0) for r in rlist),
+                            "gofood_net": sum(r.get("gofood_net",0) for r in rlist),
+                            "belanja_warung": sum(r.get("belanja_warung",0) for r in rlist),
+                            "total_belanja": sum(r.get("total_belanja",0) for r in rlist),
+                            "keuntungan": sum(r.get("keuntungan",0) for r in rlist)}
+                p1r, p2r, p3r = sr[:10], sr[10:20], sr[20:]
+                display_rows = [
+                    _agg(p1r, "P1 ({} hr)".format(len(p1r))),
+                    _agg(p2r, "P2 ({} hr)".format(len(p2r))),
+                    _agg(p3r, "P3 ({} hr)".format(len(p3r))),
+                ]
+                col_first = "Periode"
+            else:
+                display_rows = rows
+                col_first = "Tgl"
+
             buf = await loop.run_in_executor(
-                None, lambda: build_daily_table_image(rows, restaurant, periode_str, summary_data)
+                None, lambda: build_daily_table_image(
+                    display_rows, restaurant, periode_str, summary_data,
+                    col_first=col_first)
             )
             title = ("Ringkasan Bulanan" if period == 3 else "Ringkasan 10 Hari")
             await ctx.bot.send_photo(
