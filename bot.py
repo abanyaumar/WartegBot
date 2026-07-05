@@ -87,7 +87,7 @@ MONTHLY_EXPENSES = {
 SELECT_RESTAURANT, CONFIRM_DATA, EDIT_FIELD, VALIDATE_BELANJA, MAIN_GOFOOD = range(5)
 PENG_SELECT, PENG_PERIOD, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 8)
 GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(8, 12)
-RSUM_SELECT, RSUM_PERIOD, RSUM_DATE = 11, 13, 12
+RSUM_SELECT, RSUM_PERIOD, RSUM_DATE, RSUM_KASBON = 11, 13, 12, 16
 LGOFOOD_SELECT, LGOFOOD_DATE = 14, 15
 
 def esc(text):
@@ -1437,6 +1437,9 @@ async def ringkasan_date_option_selected(update, ctx):
         s = fetch_summary(restaurant, days=days)
         if not s or s.get("status") == "error":
             await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
+        if _needs_kasbon_prompt(s, period):
+            ctx.user_data["rsum_s"] = s
+            return await _prompt_kasbon(q.message.reply_text, ctx, restaurant, s, period)
         await send_ringkasan(q.message.reply_text, restaurant, s, period)
         return ConversationHandler.END
     if q.data == "rsum_manual":
@@ -1469,6 +1472,58 @@ async def ringkasan_date_input(update, ctx):
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
+    if _needs_kasbon_prompt(s, period):
+        ctx.user_data["rsum_s"] = s
+        return await _prompt_kasbon(update.message.reply_text, ctx, restaurant, s, period)
+    await send_ringkasan(update.message.reply_text, restaurant, s, period)
+    return ConversationHandler.END
+
+def _needs_kasbon_prompt(s, period):
+    """Return True when kasbon is missing from Apps Script response and period is P1 or P2."""
+    if period == 1:
+        return s.get("pengeluaran_p1", 0) > 0 and s.get("kasbon_p1", 0) == 0
+    if period == 2:
+        return s.get("pengeluaran_p2", 0) > 0 and s.get("kasbon_p2", 0) == 0
+    return False
+
+async def _prompt_kasbon(send_fn, ctx, restaurant, s, period):
+    """Ask user for kasbon amount and return RSUM_KASBON state."""
+    pe = s.get("pengeluaran_p1", 0) if period == 1 else s.get("pengeluaran_p2", 0)
+    label = "P1 (kasbon karyawan)" if period == 1 else "P2 (kasbon manajer)"
+    await send_fn(
+        "💬 <b>Konfirmasi Kasbon " + label + "</b>\n\n"
+        "Pengeluaran " + ("P1" if period == 1 else "P2") + " terdeteksi: <b>Rp " + format(pe, ",") + "</b>\n"
+        "Kasbon belum terdeteksi otomatis.\n\n"
+        "Ketik jumlah kasbon " + ("P1" if period == 1 else "P2") + " (atau <code>0</code> jika tidak ada):\n"
+        "<i>Contoh: 460769</i>",
+        parse_mode="HTML"
+    )
+    return RSUM_KASBON
+
+async def ringkasan_kasbon_input(update, ctx):
+    """Handle manual kasbon entry when Apps Script returns 0."""
+    text = update.message.text.strip().replace(".", "").replace(",", "")
+    try:
+        kasbon_amt = int(text)
+    except ValueError:
+        await update.message.reply_text(
+            "Format tidak valid. Masukkan angka (contoh: <code>460769</code>).",
+            parse_mode="HTML")
+        return RSUM_KASBON
+
+    restaurant = ctx.user_data.get("rsum_restaurant", "")
+    period     = ctx.user_data.get("rsum_period", 1)
+    s          = ctx.user_data.get("rsum_s", {})
+    if not s:
+        await update.message.reply_text("Data tidak ditemukan. Mulai ulang dengan /ringkasan10hari.")
+        return ConversationHandler.END
+
+    # Inject the manually entered kasbon into the summary dict
+    if period == 1:
+        s["kasbon_p1"] = kasbon_amt
+    elif period == 2:
+        s["kasbon_p2"] = kasbon_amt
+
     await send_ringkasan(update.message.reply_text, restaurant, s, period)
     return ConversationHandler.END
 
@@ -1579,6 +1634,9 @@ def main():
                 CallbackQueryHandler(ringkasan_date_option_selected, pattern="^rsum_"),
                 CallbackQueryHandler(ringkasan_period_selected),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ringkasan_date_input),
+            ],
+            RSUM_KASBON: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ringkasan_kasbon_input),
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
