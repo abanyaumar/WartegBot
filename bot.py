@@ -1404,72 +1404,40 @@ async def ringkasan_period_selected(update, ctx):
     ptag_map = {1: "P1", 2: "P2", 3: "P3"}
     ctx.user_data["rsum_ptag"] = ptag_map[period_map[q.data]]
     restaurant = ctx.user_data.get("rsum_restaurant","")
-    label = ["","Periode 1 (Hari 1-10)","Periode 2 (Hari 11-20)","Periode 3 (Rekap Bulanan)"][period_map[q.data]]
     period_num = period_map[q.data]
-    if period_num == 3:
-        # P3 = monthly recap: always require a start date so the P1/P2/P3 row split
-        # aligns correctly (fetching "last N rows" breaks when there are closed days).
-        await q.edit_message_text(
-            "<b>" + restaurant + "</b> - Rekap Bulanan (P3)\n\n"
-            "Ketik <b>tanggal mulai P1</b> (hari pertama bulan itu), contoh:\n"
-            "<code>25 Mei 2026</code>\n"
-            "<code>25/05/2026</code>\n"
-            "<code>2026-05-25</code>\n\n"
-            "Bot akan otomatis hitung P1 (hari 1-10), P2 (11-20), P3 (21-30).",
-            parse_mode="HTML")
-        return RSUM_DATE
-    else:
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("10 Hari Terakhir", callback_data="rsum_latest")],
-            [InlineKeyboardButton("Pilih Tanggal Mulai", callback_data="rsum_manual")],
-            [InlineKeyboardButton("Batalkan", callback_data="cancel")],
-        ])
+    labels = {1: "Periode 1 (Hari 1-10)", 2: "Periode 2 (Hari 11-20)", 3: "Rekap Bulanan (P3)"}
+    start_hints = {
+        1: "hari pertama P1 (hari pertama buka bulan itu)",
+        2: "hari pertama P1 (bukan hari pertama P2 — bot hitung otomatis)",
+        3: "hari pertama P1 (hari pertama buka bulan itu)",
+    }
+    # All periods require a start date so Apps Script can filter pengeluaran by month+period
     await q.edit_message_text(
-        "<b>" + restaurant + "</b> - " + label + "\n\nPilih rentang data:",
-        parse_mode="HTML", reply_markup=kb)
+        "<b>" + restaurant + "</b> - " + labels[period_num] + "\n\n"
+        "Ketik <b>tanggal mulai P1</b> (" + start_hints[period_num] + "), contoh:\n"
+        "<code>25 Jun 2026</code>\n"
+        "<code>25/06/2026</code>\n"
+        "<code>2026-06-25</code>",
+        parse_mode="HTML")
     return RSUM_DATE
 
-async def ringkasan_date_option_selected(update, ctx):
-    q = update.callback_query; await q.answer()
-    restaurant = ctx.user_data.get("rsum_restaurant","")
-    period     = ctx.user_data.get("rsum_period", 1)
-    if q.data == "cancel":
-        await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
-    if q.data == "rsum_latest":
-        days = 30 if period == 3 else 10
-        await q.edit_message_text("Mengambil data " + restaurant + "...")
-        s = fetch_summary(restaurant, days=days)
-        if not s or s.get("status") == "error":
-            await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
-        await send_ringkasan(q.message.reply_text, restaurant, s, period)
-        return ConversationHandler.END
-    if q.data == "rsum_manual":
-        await q.edit_message_text(
-            "<b>" + restaurant + " - Pilih Tanggal</b>\n\n"
-            "Ketik tanggal mulai, contoh:\n"
-            "<code>1 Jun 2026</code>\n"
-            "<code>01/06/2026</code>\n"
-            "<code>2026-06-01</code>\n\n"
-            "Bot akan tampilkan ringkasan 10 hari dari tanggal tersebut.",
-            parse_mode="HTML")
-        return RSUM_DATE
-    return RSUM_DATE
+
 
 async def ringkasan_date_input(update, ctx):
     restaurant = ctx.user_data.get("rsum_restaurant","")
+    period     = ctx.user_data.get("rsum_period", 1)
+    ptag       = ctx.user_data.get("rsum_ptag", "P1")
     text = update.message.text.strip()
     start_date = parse_date_input(text)
     if not start_date:
         await update.message.reply_text(
             "Format tanggal tidak dikenal. Coba:\n"
-            "<code>1 Jun 2026</code> atau <code>01/06/2026</code> atau <code>2026-06-01</code>",
+            "<code>25 Jun 2026</code> atau <code>25/06/2026</code> atau <code>2026-06-25</code>",
             parse_mode="HTML")
         return RSUM_DATE
     await update.message.reply_text("Mengambil data " + restaurant + " dari " + text + "...")
-    ptag   = ctx.user_data.get("rsum_ptag", "")
-    period = ctx.user_data.get("rsum_period", 1)
-    days   = 30 if period == 3 else 10
-    s = fetch_summary(restaurant, days=days, start_date=start_date, period_tag=ptag if ptag else None)
+    days = 30 if period == 3 else 10
+    s = fetch_summary(restaurant, days=days, start_date=start_date, period_tag=ptag)
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
@@ -1580,8 +1548,6 @@ def main():
             RSUM_SELECT: [CallbackQueryHandler(ringkasan_restaurant_selected)],
             RSUM_PERIOD: [CallbackQueryHandler(ringkasan_period_selected)],
             RSUM_DATE:   [
-                CallbackQueryHandler(ringkasan_date_option_selected, pattern="^rsum_"),
-                CallbackQueryHandler(ringkasan_period_selected),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ringkasan_date_input),
             ],
         },
