@@ -1304,8 +1304,19 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     lines = [l for l in lines if l != ""]  # remove empty strings from conditional
     return "\n".join(lines)
 
-def build_daily_table_image(rows, restaurant, periode_str):
-    """Render daily detail rows as a styled PNG table; returns a BytesIO buffer."""
+def _clean_for_image(text):
+    """Strip HTML tags and emoji characters for plain matplotlib text rendering."""
+    text = re.sub(r'<[^>]+>', '', text or "")
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+    text = re.sub(r'[\u2600-\u27BF\u2B00-\u2BFF\uFE00-\uFE0F]', '', text)
+    text = text.replace('\u2192', '->').replace('\u27a1\ufe0f', '->').replace('\u27a1', '->')
+    text = text.replace('\u2190', '<-').replace('\u2b05\ufe0f', '<-').replace('\u2b05', '<-')
+    text = text.replace('&amp;', '&').replace('&nbsp;', ' ')
+    return re.sub(r' +', ' ', text).strip()
+
+
+def build_daily_table_image(rows, restaurant, periode_str, summary_data=None):
+    """Render daily detail rows + optional summary as a styled PNG; returns BytesIO."""
     MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
                 "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
                 "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
@@ -1335,8 +1346,22 @@ def build_daily_table_image(rows, restaurant, periode_str):
     col_labels = ["Tgl", "Masuk", "Belanja", "Untung"]
     n_rows     = len(table_data)
 
-    fig_h = max(4.0, 0.5 * n_rows + 2.0)
-    fig, ax = plt.subplots(figsize=(9, fig_h))
+    table_h = max(4.0, 0.5 * n_rows + 2.0)
+
+    if summary_data:
+        total_lines = summary_data.get("total_lines", [])
+        bagi_lines  = summary_data.get("bagi_lines", [])
+        n_sum_lines = len(total_lines) + len(bagi_lines) + 4  # headers + spacers
+        summary_h = max(3.0, 0.30 * n_sum_lines + 0.5)
+        fig = plt.figure(figsize=(9, table_h + summary_h), facecolor="white")
+        gs  = fig.add_gridspec(2, 1, height_ratios=[table_h, summary_h], hspace=0.02)
+        ax  = fig.add_subplot(gs[0])
+        ax_sum = fig.add_subplot(gs[1])
+        ax_sum.axis("off")
+    else:
+        fig, ax = plt.subplots(figsize=(9, table_h), facecolor="white")
+        ax_sum = None
+
     ax.axis("off")
     ax.set_title(
         "Detail Harian - " + restaurant + "\n" + periode_str,
@@ -1346,7 +1371,7 @@ def build_daily_table_image(rows, restaurant, periode_str):
     tbl = ax.table(
         cellText=table_data,
         colLabels=col_labels,
-        loc="center",
+        loc="upper center",
         cellLoc="right"
     )
     tbl.auto_set_font_size(False)
@@ -1376,7 +1401,38 @@ def build_daily_table_image(rows, restaurant, periode_str):
                 cell.set_text_props(ha="center" if j == 0 else "right")
             cell.set_edgecolor("#DEE2E6")
 
-    plt.tight_layout()
+    # Summary panel (TOTAL + BAGI HASIL)
+    if ax_sum is not None and summary_data:
+        total_lines = summary_data.get("total_lines", [])
+        bagi_lines  = summary_data.get("bagi_lines", [])
+        all_lines   = (["TOTAL"] + total_lines +
+                       (["", "BAGI HASIL"] + bagi_lines if bagi_lines else []))
+        n_all = max(len(all_lines), 8)
+        line_h = 0.92 / n_all
+
+        ax_sum.plot([0.01, 0.99], [0.98, 0.98], color="#BDC3C7", linewidth=1.2,
+                    transform=ax_sum.transAxes, clip_on=False)
+
+        y = 0.94
+        for line in all_lines:
+            if not line.strip():
+                y -= line_h * 0.6
+                continue
+            is_header  = line in ("TOTAL", "BAGI HASIL")
+            is_profit  = "PROFIT BERSIH" in line
+            is_transfer = "->" in line or "<-" in line
+            color  = ("#27AE60" if is_profit else
+                      "#C0392B" if is_transfer else
+                      "#2C3E50")
+            weight = "bold" if (is_header or is_profit or is_transfer) else "normal"
+            size   = 11 if is_header else 10
+            indent = 0.02 if is_header else 0.04
+            ax_sum.text(indent, y, line,
+                        transform=ax_sum.transAxes,
+                        fontsize=size, fontweight=weight, color=color,
+                        va="top", fontfamily="monospace")
+            y -= line_h
+
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=150, bbox_inches="tight",
                 facecolor="white", edgecolor="none")
@@ -1535,27 +1591,71 @@ async def ringkasan_date_input(update, ctx):
     return ConversationHandler.END
 
 async def send_ringkasan(update, ctx, restaurant, s, period):
-    """Send ringkasan: styled table as image, then summary as text message(s)."""
-    rows       = s.get("rows", [])
+    """Send ringkasan as a single image (table + summary). Falls back to text on error."""
+    rows        = s.get("rows", [])
     periode_str = s.get("periode", "-")
 
-    # Send daily detail as a rendered PNG table image
+    summary_data = None
+    if rows:
+        pe           = s.get("total_pengeluaran", 0)
+        pe_p1        = s.get("pengeluaran_p1", 0)
+        pe_p2        = s.get("pengeluaran_p2", 0)
+        kasbon_total = s.get("kasbon_total", 0)
+        kasbon_p2    = s.get("kasbon_p2", 0)
+        gofood_monthly = s.get("total_gofood_netto", 0)
+
+        om = sum(r.get("omzet", 0) for r in rows)
+        gf = sum(r.get("gofood_net", 0) for r in rows)
+        bw = sum(r.get("belanja_warung", 0) for r in rows)
+        bl = sum(r.get("total_belanja", 0) for r in rows)
+        k  = sum(r.get("keuntungan", 0) for r in rows)
+        ti = om if restaurant == "WKB Tuban" else om + gf
+        to = bl - bw if restaurant == "WKB Tuban" else bl
+        pe_display = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe)
+        pr_display = k - pe_display if period in (1, 2) else k - pe
+
+        total_lines = [
+            "Total Pemasukan      : Rp {:,}".format(ti),
+            "Total Belanja Harian : Rp {:,}".format(to),
+            "Keuntungan Harian    : Rp {:,}".format(k),
+        ]
+        if pe_display > 0:
+            total_lines.append("Pengeluaran Op.      : -Rp {:,}".format(pe_display))
+        total_lines.append("PROFIT BERSIH        : Rp {:,}".format(pr_display))
+
+        profit_section = calculate_profit_sharing(
+            restaurant, rows, period,
+            pengeluaran=pe_display, pe_p1=pe_p1, pe_p2=pe_p2,
+            kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
+            gofood_monthly=gofood_monthly if period == 3 else 0
+        )
+        bagi_lines = []
+        if profit_section:
+            for line in profit_section.split("\n"):
+                clean = _clean_for_image(line)
+                if clean:
+                    bagi_lines.append(clean)
+
+        summary_data = {"total_lines": total_lines, "bagi_lines": bagi_lines}
+
     if rows:
         try:
             loop = asyncio.get_event_loop()
             buf = await loop.run_in_executor(
-                None, lambda: build_daily_table_image(rows, restaurant, periode_str)
+                None, lambda: build_daily_table_image(rows, restaurant, periode_str, summary_data)
             )
+            title = ("Ringkasan Bulanan" if period == 3 else "Ringkasan 10 Hari")
             await ctx.bot.send_photo(
                 chat_id=update.effective_chat.id,
                 photo=buf,
-                caption="<b>Detail Harian - " + restaurant + "</b>",
+                caption="<b>" + title + " - " + restaurant + "</b>\nPeriode: " + periode_str,
                 parse_mode="HTML"
             )
+            return
         except Exception as e:
-            logger.error("Table image failed, skipping: %s", e)
+            logger.error("Table image failed, falling back to text: %s", e)
 
-    # Send text summary (header + totals + bagi hasil)
+    # Fallback: send as text messages
     parts = build_ringkasan_msg(restaurant, s, period)
     for part in parts:
         await update.message.reply_text(part, parse_mode="HTML")
