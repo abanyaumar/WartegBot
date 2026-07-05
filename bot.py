@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-import os, json, logging, re, html, datetime, time, asyncio, math
+import os, json, logging, re, html, datetime, time, asyncio, math, io
+import matplotlib
+matplotlib.use("Agg")   # non-interactive backend — no display needed
+import matplotlib.pyplot as plt
 from google import genai
 from google.genai import types
 import requests
@@ -1301,6 +1304,87 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     lines = [l for l in lines if l != ""]  # remove empty strings from conditional
     return "\n".join(lines)
 
+def build_daily_table_image(rows, restaurant, periode_str):
+    """Render daily detail rows as a styled PNG table; returns a BytesIO buffer."""
+    MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
+                "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
+                "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+
+    def _date(d):
+        try:
+            p = d.split()
+            return p[0].zfill(2) + "/" + str(MONTHS_N.get(p[1], "?"))
+        except Exception:
+            return d[:5]
+
+    def _rp(n):
+        return "Rp {:,}".format(n)
+
+    table_data = []
+    totals = [0, 0, 0]
+    for r in rows:
+        r_om = r.get("omzet", 0)
+        r_gf = r.get("gofood_net", 0)
+        r_bl = r.get("total_belanja", 0)
+        r_k  = r.get("keuntungan", 0)
+        r_in = r_om + (0 if restaurant == "WKB Tuban" else r_gf)
+        totals[0] += r_in; totals[1] += r_bl; totals[2] += r_k
+        table_data.append([_date(r.get("date", "?")), _rp(r_in), _rp(r_bl), _rp(r_k)])
+    table_data.append(["TOTAL", _rp(totals[0]), _rp(totals[1]), _rp(totals[2])])
+
+    col_labels = ["Tgl", "Masuk", "Belanja", "Untung"]
+    n_rows     = len(table_data)
+
+    fig_h = max(4.0, 0.5 * n_rows + 2.0)
+    fig, ax = plt.subplots(figsize=(9, fig_h))
+    ax.axis("off")
+    ax.set_title(
+        "Detail Harian - " + restaurant + "\n" + periode_str,
+        fontsize=13, fontweight="bold", pad=14, color="#2C3E50"
+    )
+
+    tbl = ax.table(
+        cellText=table_data,
+        colLabels=col_labels,
+        loc="center",
+        cellLoc="right"
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(10)
+    tbl.auto_set_column_width([0, 1, 2, 3])
+    tbl.scale(1, 1.7)
+
+    # Header row styling
+    for j in range(4):
+        cell = tbl[0, j]
+        cell.set_facecolor("#2C3E50")
+        cell.set_text_props(color="white", fontweight="bold",
+                            ha="center" if j == 0 else "right")
+        cell.set_edgecolor("white")
+
+    # Data + total row styling
+    for i in range(1, n_rows + 1):
+        is_total = (i == n_rows)
+        for j in range(4):
+            cell = tbl[i, j]
+            if is_total:
+                cell.set_facecolor("#D5E8D4")
+                cell.set_text_props(fontweight="bold",
+                                    ha="center" if j == 0 else "right")
+            else:
+                cell.set_facecolor("#FFFFFF" if i % 2 != 0 else "#F4F6F8")
+                cell.set_text_props(ha="center" if j == 0 else "right")
+            cell.set_edgecolor("#DEE2E6")
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                facecolor="white", edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
 def build_ringkasan_msg(restaurant, s, period=1):
     """Returns a list of message parts to send (split to stay under Telegram 4096 limit)."""
     pe    = s.get("total_pengeluaran", 0)
@@ -1330,50 +1414,6 @@ def build_ringkasan_msg(restaurant, s, period=1):
         "====================",
     ]
 
-    # Build daily detail rows as monospace table
-    day_lines = []
-    if rows:
-        def _k(n):
-            """Format number as compact 'K' string, right-aligned in 7 chars."""
-            return str(round(n / 1000)) + "K"
-        def _rp(n):
-            """Format as short Rp string right-padded to 7 chars."""
-            return _k(n).rjust(7)
-
-        day_lines.append("<b>📋 DETAIL PER HARI:</b>")
-        # Header
-        hdr  = "Tgl    Masuk   Belanja  Untung"
-        sep  = "─" * len(hdr)
-        table_rows = [hdr, sep]
-        totals = {"in": 0, "bl": 0, "k": 0}
-        for r in rows:
-            d    = r.get("date", "?")          # e.g. "25 Jun 2026"
-            parts = d.split()
-            # compact date: "25/6"
-            try:
-                MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
-                            "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
-                            "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
-                dd = parts[0].zfill(2) + "/" + str(MONTHS_N.get(parts[1], "?"))
-            except Exception:
-                dd = d[:5]
-            r_om = r.get("omzet", 0)
-            r_gf = r.get("gofood_net", 0)
-            r_bl = r.get("total_belanja", 0)
-            r_k  = r.get("keuntungan", 0)
-            r_in = r_om + (0 if restaurant == "WKB Tuban" else r_gf)
-            totals["in"] += r_in; totals["bl"] += r_bl; totals["k"] += r_k
-            table_rows.append(
-                dd.ljust(6) + _rp(r_in) + " " + _rp(r_bl) + " " + _rp(r_k)
-            )
-        table_rows.append(sep)
-        table_rows.append(
-            "TTL   " + _rp(totals["in"]) + " " + _rp(totals["bl"]) + " " + _rp(totals["k"])
-        )
-        day_lines.append("<code>" + "\n".join(table_rows) + "</code>")
-        day_lines.append("====================")
-
-
     profit_section = calculate_profit_sharing(
         restaurant, rows, period,
         pengeluaran = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe),
@@ -1401,27 +1441,19 @@ def build_ringkasan_msg(restaurant, s, period=1):
     if profit_section:
         summary_lines.append(profit_section)
 
-    # Pack into messages ≤ 4000 chars each
+    # Pack header + summary into messages ≤ 4000 chars
     parts = []
-    def flush(lines):
-        if lines:
-            parts.append("\n".join(lines))
-
-    current = header[:]
-    for line in day_lines:
+    all_lines = header + summary_lines
+    current = []
+    for line in all_lines:
         if len("\n".join(current)) + len(line) + 1 > 3900:
-            flush(current)
+            if current:
+                parts.append("\n".join(current))
             current = [line]
         else:
             current.append(line)
-    # Attach summary to last chunk if it fits, else new message
-    summary_text = "\n".join(summary_lines)
-    if len("\n".join(current)) + len(summary_text) + 1 > 3900:
-        flush(current)
-        parts.append(summary_text)
-    else:
-        current += summary_lines
-        flush(current)
+    if current:
+        parts.append("\n".join(current))
 
     return parts
 
@@ -1499,14 +1531,34 @@ async def ringkasan_date_input(update, ctx):
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
-    await send_ringkasan(update.message.reply_text, restaurant, s, period)
+    await send_ringkasan(update, ctx, restaurant, s, period)
     return ConversationHandler.END
 
-async def send_ringkasan(send_fn, restaurant, s, period):
-    """Send ringkasan as one or more messages (each ≤ 4000 chars)."""
+async def send_ringkasan(update, ctx, restaurant, s, period):
+    """Send ringkasan: styled table as image, then summary as text message(s)."""
+    rows       = s.get("rows", [])
+    periode_str = s.get("periode", "-")
+
+    # Send daily detail as a rendered PNG table image
+    if rows:
+        try:
+            loop = asyncio.get_event_loop()
+            buf = await loop.run_in_executor(
+                None, lambda: build_daily_table_image(rows, restaurant, periode_str)
+            )
+            await ctx.bot.send_photo(
+                chat_id=update.effective_chat.id,
+                photo=buf,
+                caption="<b>Detail Harian - " + restaurant + "</b>",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error("Table image failed, skipping: %s", e)
+
+    # Send text summary (header + totals + bagi hasil)
     parts = build_ringkasan_msg(restaurant, s, period)
     for part in parts:
-        await send_fn(part, parse_mode="HTML")
+        await update.message.reply_text(part, parse_mode="HTML")
 
 
 async def cancel(update, ctx):
