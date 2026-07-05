@@ -1,0 +1,14 @@
+services:
+  - type: worker
+    name: warteg-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: APPS_SCRIPT_URL
+        sync: false
+    plan: free
