@@ -1336,9 +1336,9 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None):
     for r in rows:
         r_om = r.get("omzet", 0)
         r_gf = r.get("gofood_net", 0)
-        r_bl = r.get("total_belanja", 0)
         r_k  = r.get("keuntungan", 0)
         r_in = r_om + (0 if restaurant == "WKB Tuban" else r_gf)
+        r_bl = r_in - r_k   # net belanja = masuk - untung (consistent across all restaurants)
         totals[0] += r_in; totals[1] += r_bl; totals[2] += r_k
         table_data.append([_date(r.get("date", "?")), _rp(r_in), _rp(r_bl), _rp(r_k)])
     table_data.append(["TOTAL", _rp(totals[0]), _rp(totals[1]), _rp(totals[2])])
