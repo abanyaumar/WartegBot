@@ -1053,7 +1053,7 @@ async def lgofood_date_option(update, ctx):
     if q.data == "lgofood_latest":
         await q.edit_message_text("Mengambil data GoFood " + restaurant + "...")
         s = fetch_summary(restaurant, days=10)
-        await _send_lgofood(q.message.reply_text, restaurant, s)
+        await _send_lgofood(q.message.chat_id, ctx.bot, restaurant, s)
         return ConversationHandler.END
     if q.data == "lgofood_manual":
         await q.edit_message_text(
@@ -1078,43 +1078,48 @@ async def lgofood_date_input(update, ctx):
         return LGOFOOD_DATE
     await update.message.reply_text("Mengambil data GoFood " + restaurant + " dari " + text + "...")
     s = fetch_summary(restaurant, days=10, start_date=start_date)
-    await _send_lgofood(update.message.reply_text, restaurant, s)
+    await _send_lgofood(update.effective_chat.id, ctx.bot, restaurant, s)
     return ConversationHandler.END
 
-async def _send_lgofood(send_fn, restaurant, s):
+async def _send_lgofood(chat_id, bot, restaurant, s):
+    async def _fallback(msg):
+        await bot.send_message(chat_id=chat_id, text=msg, parse_mode="HTML")
+
     if not s or s.get("status") == "error" or not s.get("rows"):
-        await send_fn("Gagal mengambil data atau tidak ada data GoFood."); return
-    rows = s.get("rows", [])
+        await _fallback("Gagal mengambil data atau tidak ada data GoFood."); return
+
+    rows   = s.get("rows", [])
     periode = s.get("periode", "-")
-    total_gf = sum(r.get("gofood_net", 0) for r in rows)
-    total_omzet = sum(r.get("omzet", 0) for r in rows)
-    lines = [
-        "<b>Laporan GoFood Harian</b>",
-        "<b>" + restaurant + "</b>",
-        "Periode: " + periode,
-        "====================",
-        "",
-    ]
-    for r in rows:
-        gf = r.get("gofood_net", 0)
-        omzet = r.get("omzet", 0)
-        date = r.get("date", "?")
-        pct = round(gf / omzet * 100, 1) if omzet > 0 else 0
-        gf_str = "Rp " + format(gf, ",") if gf > 0 else "<i>Tidak ada</i>"
-        pct_str = (" (" + str(pct) + "% dari omzet)") if gf > 0 else ""
-        lines.append("<b>" + date + "</b>")
-        lines.append("  GoFood: " + gf_str + pct_str)
-        lines.append("  Omzet Tunai: Rp " + format(omzet, ","))
-        lines.append("")
-    lines += [
-        "====================",
-        "Total GoFood (10 hari): <b>Rp " + format(total_gf, ",") + "</b>",
-        "Total Omzet Tunai     : Rp " + format(total_omzet, ","),
-    ]
-    if total_omzet + total_gf > 0:
-        pct_total = round(total_gf / (total_omzet + total_gf) * 100, 1)
-        lines.append("GoFood = <b>" + str(pct_total) + "% dari total pendapatan</b>")
-    await send_fn("\n".join(lines), parse_mode="HTML")
+    gf_rows = [r for r in rows if r.get("gofood_net", 0) > 0]
+    if not gf_rows:
+        await _fallback("Tidak ada data GoFood pada periode ini."); return
+
+    try:
+        loop = asyncio.get_event_loop()
+        buf  = await loop.run_in_executor(
+            None, lambda: build_gofood_image(gf_rows, restaurant, periode)
+        )
+        if buf:
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=buf,
+                caption="<b>Laporan GoFood – " + restaurant + "</b>\nPeriode: " + periode,
+                parse_mode="HTML"
+            )
+            return
+    except Exception as e:
+        logger.error("GoFood image failed: %s", e)
+
+    # Fallback text
+    total_gf = sum(r.get("gofood_net", 0) for r in gf_rows)
+    lines = ["<b>Laporan GoFood – " + restaurant + "</b>", "Periode: " + periode, ""]
+    for r in gf_rows:
+        net     = r.get("gofood_net", 0)
+        nominal = round(net / 0.993)
+        tax     = nominal - net
+        lines.append("<b>" + r.get("date","?") + "</b>  Rp {:,}  (pajak {:,})".format(nominal, tax))
+    lines += ["", "JUMLAH: <b>Rp {:,}</b>".format(total_gf)]
+    await _fallback("\n".join(lines))
 def get_month_and_rows(restaurant, rows):
     """Find the dominant month from rows and return all rows for that month."""
     if not rows:
@@ -1458,6 +1463,77 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, co
                         fontsize=size, fontweight=weight, color=color,
                         va="top", fontfamily="monospace")
             y -= line_h
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                facecolor="white", edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def build_gofood_image(rows, restaurant, periode_str):
+    """Render GoFood daily table (Tanggal | Nominal | Potongan Pajak | Pendapatan) as PNG."""
+    def _date_fmt(d):
+        # "25 Jun 2026" -> "25-Jun-26"
+        try:
+            p = d.split()
+            return p[0].zfill(2) + "-" + p[1][:3] + "-" + p[2][-2:]
+        except Exception:
+            return d[:12]
+
+    def _rp(n):
+        return "{:,}".format(n)
+
+    gf_rows = [r for r in rows if r.get("gofood_net", 0) > 0]
+    if not gf_rows:
+        return None
+
+    table_data = []
+    total_nominal = total_tax = total_pendapatan = 0
+    for r in gf_rows:
+        net     = r.get("gofood_net", 0)
+        nominal = round(net / 0.993)
+        tax     = nominal - net
+        total_nominal     += nominal
+        total_tax         += tax
+        total_pendapatan  += net
+        table_data.append([_date_fmt(r.get("date", "?")), _rp(nominal), _rp(tax), _rp(net)])
+    table_data.append(["JUMLAH", _rp(total_nominal), _rp(total_tax), _rp(total_pendapatan)])
+
+    n_rows  = len(table_data)
+    table_h = max(3.5, 0.45 * n_rows + 1.5)
+    fig, ax = plt.subplots(figsize=(9, table_h), facecolor="white")
+    ax.axis("off")
+    ax.set_title("GO FOOD  " + periode_str.upper(),
+                 fontsize=13, fontweight="bold", pad=14, color="#C0392B")
+
+    col_labels = ["TANGGAL\nORDER", "NOMINAL\nORDER", "POTONGAN\nPAJAK", "PENDAPATAN"]
+    tbl = ax.table(cellText=table_data, colLabels=col_labels,
+                   loc="upper center", cellLoc="center")
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(10)
+    tbl.auto_set_column_width([0, 1, 2, 3])
+    tbl.scale(1, 1.8)
+
+    for j in range(4):
+        cell = tbl[0, j]
+        cell.set_facecolor("#2C3E50")
+        cell.set_text_props(color="white", fontweight="bold", ha="center")
+        cell.set_edgecolor("white")
+
+    n_data = len(table_data)
+    for i in range(1, n_data + 1):
+        is_total = (i == n_data)
+        for j in range(4):
+            cell = tbl[i, j]
+            if is_total:
+                cell.set_facecolor("#D5E8D4")
+                cell.set_text_props(fontweight="bold", ha="center")
+            else:
+                cell.set_facecolor("#FFFFFF" if i % 2 != 0 else "#F4F6F8")
+                cell.set_text_props(ha="center")
+            cell.set_edgecolor("#DEE2E6")
 
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=150, bbox_inches="tight",
