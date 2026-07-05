@@ -89,6 +89,7 @@ PENG_SELECT, PENG_PERIOD, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 8)
 GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(8, 12)
 RSUM_SELECT, RSUM_PERIOD, RSUM_DATE = 11, 13, 12
 LGOFOOD_SELECT, LGOFOOD_DATE = 14, 15
+PENG_DATE = 16
 
 def esc(text):
     return html.escape(str(text))
@@ -820,12 +821,15 @@ async def peng_restaurant_selected(update, ctx):
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     restaurant = q.data.split("|",1)[1]
     ctx.user_data["peng_restaurant"] = restaurant
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Periode 1 (Hari 1-10)", callback_data="pperiod_P1")],
+        [InlineKeyboardButton("Periode 2 (Hari 11-20)", callback_data="pperiod_P2")],
+        [InlineKeyboardButton("Periode 3 (Hari 21+)", callback_data="pperiod_P3")],
+        [InlineKeyboardButton("Batalkan", callback_data="cancel")],
+    ])
     await q.edit_message_text(
-        "<b>" + restaurant + " - Pengeluaran 10 Hari</b>\n\n"
-        "Kirim FOTO nota atau KETIK langsung:\n"
-        "<code>Beras: 250000\nPLN: 150000\nPDAM: 75000\nWifi: 100000\nSampah: 50000\nKasbon: 200000</code>",
-        parse_mode="HTML")
-    return PENG_WAIT_INPUT
+        "<b>" + restaurant + " - Pengeluaran</b>\n\nPilih periode:", parse_mode="HTML", reply_markup=kb)
+    return PENG_PERIOD
 
 
 async def peng_period_selected(update, ctx):
@@ -833,12 +837,36 @@ async def peng_period_selected(update, ctx):
     if q.data == "cancel":
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     ptag = q.data.split("_")[1]  # "P1", "P2", or "P3"
-    ctx.user_data["peng_period"] = ptag
+    ctx.user_data["peng_ptag"] = ptag
     restaurant = ctx.user_data.get("peng_restaurant","")
-    today = datetime.date.today()
-    ctx.user_data["peng_periode_tag"] = today.strftime("%Y-%m") + "-" + ptag
+    labels = {"P1": "Periode 1 (Hari 1-10)", "P2": "Periode 2 (Hari 11-20)", "P3": "Periode 3 (Hari 21+)"}
     await q.edit_message_text(
-        "<b>" + restaurant + " - Pengeluaran " + ptag + "</b>\n\n"
+        "<b>" + restaurant + " - " + labels.get(ptag, ptag) + "</b>\n\n"
+        "Ketik <b>tanggal mulai</b> periode ini, contoh:\n"
+        "<code>25 Jun 2026</code>\n"
+        "<code>25/06/2026</code>\n"
+        "<code>2026-06-25</code>",
+        parse_mode="HTML")
+    return PENG_DATE
+
+async def peng_date_input(update, ctx):
+    restaurant = ctx.user_data.get("peng_restaurant","")
+    ptag       = ctx.user_data.get("peng_ptag", "P1")
+    text = update.message.text.strip()
+    start_date = parse_date_input(text)
+    if not start_date:
+        await update.message.reply_text(
+            "Format tanggal tidak dikenal. Coba:\n"
+            "<code>25 Jun 2026</code> atau <code>25/06/2026</code> atau <code>2026-06-25</code>",
+            parse_mode="HTML")
+        return PENG_DATE
+    # Derive period tag from the start month: "YYYY-MM-Pn"
+    periode_tag = start_date[:7] + "-" + ptag
+    ctx.user_data["peng_periode_tag"] = periode_tag
+    labels = {"P1": "Periode 1 (Hari 1-10)", "P2": "Periode 2 (Hari 11-20)", "P3": "Periode 3 (Hari 21+)"}
+    await update.message.reply_text(
+        "<b>" + restaurant + " - " + labels.get(ptag, ptag) + "</b>\n"
+        "Periode: <b>" + periode_tag + "</b>\n\n"
         "Kirim FOTO nota atau KETIK langsung:\n"
         "<code>Beras: 250000\nPLN: 150000\nPDAM: 75000\nWifi: 100000\nSampah: 50000\nKasbon: 200000</code>",
         parse_mode="HTML")
@@ -856,8 +884,10 @@ async def peng_input_received(update, ctx):
     if not data:
         await update.message.reply_text("Gagal membaca. Coba lagi."); return PENG_WAIT_INPUT
     ctx.user_data["peng_data"] = data
+    periode_tag = ctx.user_data.get("peng_periode_tag", "")
+    ptag = ctx.user_data.get("peng_ptag", "P1")
     fields = [("Beras","beras"),("PLN","pln"),("PDAM","pdam"),("Wifi","wifi"),("Sampah","sampah"),("Kasbon","kasbon"),("Gaji","gaji"),("Lain-lain","lain_lain")]
-    lines = ["<b>Pengeluaran 10 Hari - " + restaurant + "</b>","Periode: <b>" + esc(data.get("periode","?")) + "</b>","--------------------"]
+    lines = ["<b>Pengeluaran 10 Hari - " + restaurant + "</b>","Periode: <b>" + esc(periode_tag) + "</b>","--------------------"]
     for label, key in fields:
         if data.get(key,0) > 0: lines.append(label + ": Rp " + format(data[key],","))
     lines += ["--------------------","TOTAL: <b>Rp " + format(data.get("total",0),",") + "</b>"]
@@ -865,8 +895,6 @@ async def peng_input_received(update, ctx):
     # Monthly expenses check: remind/warn about Kontrak Bangunan and BTK
     monthly = MONTHLY_EXPENSES.get(restaurant, {})
     if monthly:
-        today_day = datetime.date.today().day
-        ptag = "P1" if today_day <= 10 else ("P2" if today_day <= 20 else "P3")
         exp_btk = monthly.get("btk", 0)
         exp_kb  = monthly.get("kb", 0)
         btk_kasbon = monthly.get("btk_kasbon", 0)
@@ -903,12 +931,20 @@ async def peng_confirm(update, ctx):
     if q.data == "cancel_peng":
         await q.edit_message_text("Dibatalkan."); return ConversationHandler.END
     peng_data = ctx.user_data.get("peng_data", {})
-    # Tag with period: YYYY-MM-P1 (day 1-10), YYYY-MM-P2 (11-20), YYYY-MM-P3 (21+)
-    _today = datetime.date.today(); _d = _today.day
-    _ptag = "P1" if _d <= 10 else ("P2" if _d <= 20 else "P3")
-    peng_data["periode"] = _today.strftime("%Y-%m") + "-" + _ptag
+    # Use the periode tag derived from the user-selected start date (set in peng_date_input).
+    # This ensures cross-month periods (e.g. WKB Tuban P1: Jun 25 – Jul 4) are tagged
+    # with the start month ("2026-06-P1"), not today's calendar month.
+    peng_data["periode"] = ctx.user_data.get("peng_periode_tag", "")
+    if not peng_data["periode"]:
+        # Fallback: should not happen if flow is followed correctly
+        _today = datetime.date.today(); _d = _today.day
+        _ptag = "P1" if _d <= 10 else ("P2" if _d <= 20 else "P3")
+        peng_data["periode"] = _today.strftime("%Y-%m") + "-" + _ptag
     ok = save_to_sheets(ctx.user_data.get("peng_restaurant",""), peng_data, "pengeluaran")
-    await q.edit_message_text("<b>Pengeluaran tersimpan!</b>" if ok else "Gagal simpan.", parse_mode="HTML")
+    periode_str = peng_data.get("periode","")
+    await q.edit_message_text(
+        "<b>Pengeluaran tersimpan!</b>\nPeriode: " + periode_str if ok else "Gagal simpan.",
+        parse_mode="HTML")
     return ConversationHandler.END
 
 # ======= GOFOOD =======
@@ -1510,6 +1546,8 @@ def main():
         entry_points=[CommandHandler("pengeluaran", pengeluaran_start)],
         states={
             PENG_SELECT:     [CallbackQueryHandler(peng_restaurant_selected)],
+            PENG_PERIOD:     [CallbackQueryHandler(peng_period_selected)],
+            PENG_DATE:       [MessageHandler(filters.TEXT & ~filters.COMMAND, peng_date_input)],
             PENG_WAIT_INPUT: [
                 MessageHandler(filters.PHOTO, peng_input_received),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, peng_input_received),
