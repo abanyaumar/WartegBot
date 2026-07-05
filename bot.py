@@ -87,7 +87,7 @@ MONTHLY_EXPENSES = {
 SELECT_RESTAURANT, CONFIRM_DATA, EDIT_FIELD, VALIDATE_BELANJA, MAIN_GOFOOD = range(5)
 PENG_SELECT, PENG_PERIOD, PENG_WAIT_INPUT, PENG_CONFIRM = range(4, 8)
 GOFOOD_SELECT, GOFOOD_WAIT_PHOTO, GOFOOD_CONFIRM, GOFOOD_DATE = range(8, 12)
-RSUM_SELECT, RSUM_PERIOD, RSUM_DATE, RSUM_KASBON = 11, 13, 12, 16
+RSUM_SELECT, RSUM_PERIOD, RSUM_DATE = 11, 13, 12
 LGOFOOD_SELECT, LGOFOOD_DATE = 14, 15
 
 def esc(text):
@@ -1132,11 +1132,16 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     if period == 1:
         gofood_total = gf(sorted_rows)
         ke_total = prof(sorted_rows)
-        profit = max(0, ke_total + gofood_total - pengeluaran)
+        # WKB Tuban: GoFood is held by manager and settled at P3 — do NOT add to P1 transfer.
+        # All expenses (including kasbon) are real cash outflows from the box.
+        is_wkb = restaurant == "WKB Tuban"
+        income_for_transfer = ke_total if is_wkb else ke_total + gofood_total
+        profit = max(0, income_for_transfer - pengeluaran)
         lines += [
             "Periode ke-1 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
             "  Keuntungan harian: Rp " + format(ke_total, ","),
+            ("  GoFood: Rp " + format(gofood_total, ",") + " <i>(diselesaikan di P3)</i>") if gofood_total > 0 and is_wkb else
             ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
             ("  Pengeluaran operasional P1: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
@@ -1145,11 +1150,14 @@ def calculate_profit_sharing(restaurant, rows, period=1, pengeluaran=0, pe_p1=0,
     elif period == 2:
         gofood_total = gf(sorted_rows)
         ke_total = prof(sorted_rows)
-        profit = max(0, ke_total + gofood_total - pengeluaran)
+        is_wkb = restaurant == "WKB Tuban"
+        income_for_transfer = ke_total if is_wkb else ke_total + gofood_total
+        profit = max(0, income_for_transfer - pengeluaran)
         lines += [
             "Periode ke-2 (" + str(len(sorted_rows)) + " hari operasional)",
             "\U0001f4c5 " + drange(sorted_rows),
             "  Keuntungan harian: Rp " + format(ke_total, ","),
+            ("  GoFood: Rp " + format(gofood_total, ",") + " <i>(diselesaikan di P3)</i>") if gofood_total > 0 and is_wkb else
             ("  GoFood: +Rp " + format(gofood_total, ",")) if gofood_total > 0 else "",
             ("  Pengeluaran operasional P2: -Rp " + format(pengeluaran, ",")) if pengeluaran > 0 else "",
             "Manager \u2192 Investor: <b>Rp " + format(profit, ",") + "</b>",
@@ -1268,11 +1276,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     pe_p2 = s.get("pengeluaran_p2", 0)
     pe_p3 = s.get("pengeluaran_p3", 0)
     kasbon_total = s.get("kasbon_total", 0)
-    kasbon_p1    = s.get("kasbon_p1", 0)
     kasbon_p2    = s.get("kasbon_p2", 0)
-    logger.info("DEBUG kasbon — restaurant=%s period=%d pe_p1=%d kasbon_p1=%d kasbon_p2=%d pe_raw=%s",
-                restaurant, period, pe_p1, kasbon_p1, kasbon_p2,
-                str({k: s.get(k) for k in ["pengeluaran_p1","kasbon_p1","kasbon_p2","kasbon_total"]}))
     gofood_monthly = s.get("total_gofood_netto", 0)  # monthly GoFood report total (authoritative for P3)
     rows = s.get("rows", [])
     om = sum(r.get("omzet", 0) for r in rows)
@@ -1315,7 +1319,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
 
     profit_section = calculate_profit_sharing(
         restaurant, rows, period,
-        pengeluaran = (pe_p1 - kasbon_p1) if period == 1 else ((pe_p2 - kasbon_p2) if period == 2 else pe),
+        pengeluaran = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe),
         pe_p1=pe_p1, pe_p2=pe_p2,
         kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
         gofood_monthly=gofood_monthly if period == 3 else 0
@@ -1326,7 +1330,7 @@ def build_ringkasan_msg(restaurant, s, period=1):
     if is_wkb_tuban_p3:
         summary_lines = []
     else:
-        pe_display = (pe_p1 - kasbon_p1) if period == 1 else ((pe_p2 - kasbon_p2) if period == 2 else pe)
+        pe_display = pe_p1 if period == 1 else (pe_p2 if period == 2 else pe)
         pr_display = k - pe_display if period in (1, 2) else pr
         summary_lines = [
             "<b>TOTAL:</b>",
@@ -1437,10 +1441,6 @@ async def ringkasan_date_option_selected(update, ctx):
         s = fetch_summary(restaurant, days=days)
         if not s or s.get("status") == "error":
             await q.edit_message_text("Gagal mengambil data."); return ConversationHandler.END
-        uses_kasbon = bool(MONTHLY_EXPENSES.get(restaurant, {}).get("btk_kasbon"))
-        if uses_kasbon and _needs_kasbon_prompt(s, period):
-            ctx.user_data["rsum_s"] = s
-            return await _prompt_kasbon(q.message.reply_text, ctx, restaurant, s, period)
         await send_ringkasan(q.message.reply_text, restaurant, s, period)
         return ConversationHandler.END
     if q.data == "rsum_manual":
@@ -1473,64 +1473,6 @@ async def ringkasan_date_input(update, ctx):
     if not s or s.get("status") == "error":
         await update.message.reply_text("Gagal mengambil data. Pastikan data sudah diinput.")
         return ConversationHandler.END
-    uses_kasbon = bool(MONTHLY_EXPENSES.get(restaurant, {}).get("btk_kasbon"))
-    if uses_kasbon and _needs_kasbon_prompt(s, period):
-        ctx.user_data["rsum_s"] = s
-        return await _prompt_kasbon(update.message.reply_text, ctx, restaurant, s, period)
-    await send_ringkasan(update.message.reply_text, restaurant, s, period)
-    return ConversationHandler.END
-
-def _needs_kasbon_prompt(s, period):
-    """Return True for restaurants with btk_kasbon config on P1/P2.
-    Always prompts — regardless of what Apps Script returned.
-    """
-    # Use the restaurant from ctx (passed as arg) not from s, to avoid key-miss issues
-    # This function is called with the restaurant name directly in the callers below.
-    # We keep this simple: always True for P1/P2 — callers already guard by restaurant.
-    return period in (1, 2)
-
-async def _prompt_kasbon(send_fn, ctx, restaurant, s, period):
-    """Ask user to confirm kasbon amount for P1/P2 bagi hasil."""
-    pe = s.get("pengeluaran_p1", 0) if period == 1 else s.get("pengeluaran_p2", 0)
-    existing = s.get("kasbon_p1", 0) if period == 1 else s.get("kasbon_p2", 0)
-    label = "P1 (kasbon karyawan)" if period == 1 else "P2 (kasbon manajer)"
-    hint = ("\n✅ Terdeteksi otomatis: <b>Rp " + format(existing, ",") + "</b>\n(Konfirmasi dengan mengetik ulang, atau koreksi jika salah)"
-            if existing > 0
-            else "\n⚠️ Tidak terdeteksi otomatis — ketik jumlah kasbon.")
-    await send_fn(
-        "💬 <b>Konfirmasi Kasbon " + label + "</b>\n\n"
-        "Pengeluaran " + ("P1" if period == 1 else "P2") + ": <b>Rp " + format(pe, ",") + "</b>"
-        + hint + "\n\n"
-        "Ketik jumlah kasbon (atau <code>0</code> jika tidak ada):\n"
-        "<i>Contoh: 460769</i>",
-        parse_mode="HTML"
-    )
-    return RSUM_KASBON
-
-async def ringkasan_kasbon_input(update, ctx):
-    """Handle manual kasbon entry when Apps Script returns 0."""
-    text = update.message.text.strip().replace(".", "").replace(",", "")
-    try:
-        kasbon_amt = int(text)
-    except ValueError:
-        await update.message.reply_text(
-            "Format tidak valid. Masukkan angka (contoh: <code>460769</code>).",
-            parse_mode="HTML")
-        return RSUM_KASBON
-
-    restaurant = ctx.user_data.get("rsum_restaurant", "")
-    period     = ctx.user_data.get("rsum_period", 1)
-    s          = ctx.user_data.get("rsum_s", {})
-    if not s:
-        await update.message.reply_text("Data tidak ditemukan. Mulai ulang dengan /ringkasan10hari.")
-        return ConversationHandler.END
-
-    # Inject the manually entered kasbon into the summary dict
-    if period == 1:
-        s["kasbon_p1"] = kasbon_amt
-    elif period == 2:
-        s["kasbon_p2"] = kasbon_amt
-
     await send_ringkasan(update.message.reply_text, restaurant, s, period)
     return ConversationHandler.END
 
@@ -1641,9 +1583,6 @@ def main():
                 CallbackQueryHandler(ringkasan_date_option_selected, pattern="^rsum_"),
                 CallbackQueryHandler(ringkasan_period_selected),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ringkasan_date_input),
-            ],
-            RSUM_KASBON: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, ringkasan_kasbon_input),
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
