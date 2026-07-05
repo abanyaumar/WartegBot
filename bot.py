@@ -1316,8 +1316,13 @@ def _clean_for_image(text):
     return re.sub(r' +', ' ', text).strip()
 
 
-def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, col_first="Tgl"):
-    """Render daily detail rows + optional summary as a styled PNG; returns BytesIO."""
+def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, col_first="Tgl",
+                             extra_rows=None):
+    """Render daily detail rows + optional summary as a styled PNG; returns BytesIO.
+
+    extra_rows: list of (label, value_str, bg_color_hex) — appended after TOTAL row
+                with the label spanning cols 0-2 and value right-aligned in col 3.
+    """
     MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
                 "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
                 "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
@@ -1345,11 +1350,18 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, co
         totals[0] += r_in; totals[1] += r_bl; totals[2] += r_k
         table_data.append([_date(r.get("date", "?")), _rp(r_in), _rp(r_bl), _rp(r_k)])
     table_data.append(["TOTAL", _rp(totals[0]), _rp(totals[1]), _rp(totals[2])])
+    n_data_rows = len(table_data)  # includes TOTAL row
+
+    # Append extra summary rows (label spans cols 0-2, value in col 3)
+    extra_rows = extra_rows or []
+    for label, val_str, _ in extra_rows:
+        table_data.append(["", label, "", val_str])
 
     col_labels = [col_first, "Masuk", "Belanja", "Untung"]
     n_rows     = len(table_data)
 
-    table_h = max(4.0, 0.5 * n_rows + 2.0)
+    # Height: extra_rows add real table height, so use a tighter formula
+    table_h = max(3.5, 0.45 * n_rows + 1.0)
 
     if summary_data:
         total_lines = summary_data.get("total_lines", [])
@@ -1391,8 +1403,8 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, co
         cell.set_edgecolor("white")
 
     # Data + total row styling
-    for i in range(1, n_rows + 1):
-        is_total = (i == n_rows)
+    for i in range(1, n_data_rows + 1):
+        is_total = (i == n_data_rows)
         for j in range(4):
             cell = tbl[i, j]
             if is_total:
@@ -1403,6 +1415,17 @@ def build_daily_table_image(rows, restaurant, periode_str, summary_data=None, co
                 cell.set_facecolor("#FFFFFF" if i % 2 != 0 else "#F4F6F8")
                 cell.set_text_props(ha="center" if j == 0 else "right")
             cell.set_edgecolor("#DEE2E6")
+
+    # Extra summary rows (pengeluaran label + profit label) appended after TOTAL
+    for ei, (label, val_str, bg_color) in enumerate(extra_rows):
+        row_i = n_data_rows + 1 + ei
+        # col 0: empty, col 1: bold label (left), col 2: empty, col 3: value (right)
+        tbl[row_i, 0].set_facecolor(bg_color); tbl[row_i, 0].set_edgecolor("#DEE2E6")
+        tbl[row_i, 1].set_facecolor(bg_color); tbl[row_i, 1].set_edgecolor("#DEE2E6")
+        tbl[row_i, 1].set_text_props(fontweight="bold", ha="left", color="#1A3A1A")
+        tbl[row_i, 2].set_facecolor(bg_color); tbl[row_i, 2].set_edgecolor("#DEE2E6")
+        tbl[row_i, 3].set_facecolor(bg_color); tbl[row_i, 3].set_edgecolor("#DEE2E6")
+        tbl[row_i, 3].set_text_props(fontweight="bold", ha="right", color="#1A3A1A")
 
     # Summary panel (TOTAL + BAGI HASIL)
     if ax_sum is not None and summary_data:
@@ -1938,37 +1961,31 @@ async def send_ringkasan(update, ctx, restaurant, s, period):
             )
 
         else:
-            # ── P1/P2: original table + text summary ──────────────────
-            ti = om if restaurant == "WKB Tuban" else om + gf
-            to = bl - bw if restaurant == "WKB Tuban" else bl
+            # ── P1/P2: table + simple 2-row footer ────────────────────
             pe_display = pe_p1 if period == 1 else pe_p2
             pr_display = k - pe_display
+            period_label = "PERTAMA" if period == 1 else "KEDUA"
+            # WKB Tuban: pengeluaran is beras+sampah+kasbon (no shared ops)
+            pe_label = ("BERAS+SAMPAH+KAS BON"
+                        if restaurant == "WKB Tuban"
+                        else "PENGELUARAN OPERASIONAL")
+            pr_label = "PENDAPATAN 10 HARI " + period_label
 
-            total_lines = [
-                "Total Pemasukan      : Rp {:,}".format(ti),
-                "Total Belanja Harian : Rp {:,}".format(to),
-                "Keuntungan Harian    : Rp {:,}".format(k),
-            ]
             if pe_display > 0:
-                total_lines.append("Pengeluaran Op.      : -Rp {:,}".format(pe_display))
-            total_lines.append("PROFIT BERSIH        : Rp {:,}".format(pr_display))
+                extra_rows = [
+                    (pe_label, "Rp {:,}".format(pe_display), "#FFF9C4"),  # yellow
+                    (pr_label, "Rp {:,}".format(pr_display), "#C8E6C9"),  # green
+                ]
+            else:
+                # No pengeluaran recorded yet — just show profit
+                extra_rows = [
+                    (pr_label, "Rp {:,}".format(k), "#C8E6C9"),
+                ]
 
-            profit_section = calculate_profit_sharing(
-                restaurant, rows, period,
-                pengeluaran=pe_display, pe_p1=pe_p1, pe_p2=pe_p2,
-                kasbon_total=kasbon_total, kasbon_p2=kasbon_p2,
-                gofood_monthly=0
-            )
-            bagi_lines = []
-            if profit_section:
-                for line in profit_section.split("\n"):
-                    clean = _clean_for_image(line)
-                    if clean and not re.match(r'^=+$', clean):
-                        bagi_lines.append(clean)
-
-            summary_data = {"total_lines": total_lines, "bagi_lines": bagi_lines}
             buf = await loop.run_in_executor(
-                None, lambda: build_daily_table_image(rows, restaurant, periode_str, summary_data)
+                None, lambda: build_daily_table_image(
+                    rows, restaurant, periode_str,
+                    summary_data=None, extra_rows=extra_rows)
             )
 
         title = "Ringkasan Bulanan" if period == 3 else "Ringkasan 10 Hari"
