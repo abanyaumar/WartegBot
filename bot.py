@@ -1330,24 +1330,49 @@ def build_ringkasan_msg(restaurant, s, period=1):
         "====================",
     ]
 
-    # Build daily detail rows — each day is a small chunk
+    # Build daily detail rows as monospace table
     day_lines = []
     if rows:
-        day_lines.append("<b>DETAIL PER HARI:</b>")
+        def _k(n):
+            """Format number as compact 'K' string, right-aligned in 7 chars."""
+            return str(round(n / 1000)) + "K"
+        def _rp(n):
+            """Format as short Rp string right-padded to 7 chars."""
+            return _k(n).rjust(7)
+
+        day_lines.append("<b>📋 DETAIL PER HARI:</b>")
+        # Header
+        hdr  = "Tgl    Masuk   Belanja  Untung"
+        sep  = "─" * len(hdr)
+        table_rows = [hdr, sep]
+        totals = {"in": 0, "bl": 0, "k": 0}
         for r in rows:
-            d    = r.get("date","?")
+            d    = r.get("date", "?")          # e.g. "25 Jun 2026"
+            parts = d.split()
+            # compact date: "25/6"
+            try:
+                MONTHS_N = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"Mei":5,"May":5,
+                            "Jun":6,"Jul":7,"Ags":8,"Aug":8,"Sep":9,
+                            "Okt":10,"Oct":10,"Nov":11,"Des":12,"Dec":12}
+                dd = parts[0].zfill(2) + "/" + str(MONTHS_N.get(parts[1], "?"))
+            except Exception:
+                dd = d[:5]
             r_om = r.get("omzet", 0)
             r_gf = r.get("gofood_net", 0)
             r_bl = r.get("total_belanja", 0)
             r_k  = r.get("keuntungan", 0)
             r_in = r_om + (0 if restaurant == "WKB Tuban" else r_gf)
-            day_lines.append("")
-            day_lines.append("<b>" + d + "</b>")
-            day_lines.append("  Pemasukan : Rp " + format(r_in, ",") + ("  (GoFood: Rp " + format(r_gf,",") + ")" if r_gf > 0 and restaurant != "WKB Tuban" else ""))
-            day_lines.append("  Pengeluaran: Rp " + format(r_bl, ","))
-            day_lines.append("  Keuntungan: <b>Rp " + format(r_k, ",") + "</b>")
-        day_lines.append("")
+            totals["in"] += r_in; totals["bl"] += r_bl; totals["k"] += r_k
+            table_rows.append(
+                dd.ljust(6) + _rp(r_in) + " " + _rp(r_bl) + " " + _rp(r_k)
+            )
+        table_rows.append(sep)
+        table_rows.append(
+            "TTL   " + _rp(totals["in"]) + " " + _rp(totals["bl"]) + " " + _rp(totals["k"])
+        )
+        day_lines.append("<code>" + "\n".join(table_rows) + "</code>")
         day_lines.append("====================")
+
 
     profit_section = calculate_profit_sharing(
         restaurant, rows, period,
