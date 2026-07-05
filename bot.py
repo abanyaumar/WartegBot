@@ -860,8 +860,10 @@ async def peng_date_input(update, ctx):
             "<code>25 Jun 2026</code> atau <code>25/06/2026</code> atau <code>2026-06-25</code>",
             parse_mode="HTML")
         return PENG_DATE
-    # Derive period tag from the start month: "YYYY-MM-Pn"
-    periode_tag = start_date[:7] + "-" + ptag
+    # Derive period tag from the exact start date: "YYYY-MM-DD-Pn"
+    # Using start date (not calendar month) eliminates month-boundary ambiguity.
+    # e.g. WKB Tuban P1 starts Jun 25 → "2026-06-25-P1" (not "2026-07-P1")
+    periode_tag = start_date + "-" + ptag
     ctx.user_data["peng_periode_tag"] = periode_tag
     labels = {"P1": "Periode 1 (Hari 1-10)", "P2": "Periode 2 (Hari 11-20)", "P3": "Periode 3 (Hari 21+)"}
     await update.message.reply_text(

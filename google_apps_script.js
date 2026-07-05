@@ -265,7 +265,7 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
     }
   }
 
-  // Pengeluaran: filter by periodTag (P1/P2/P3) and month from startDateParam
+  // Pengeluaran: match by startDate-based key (new: YYYY-MM-DD-Pn) or month-based (old: YYYY-MM-Pn)
   const pengSheet = ss.getSheetByName(restaurant + "_Pengeluaran");
   let totalPengeluaranP1 = 0, totalPengeluaranP2 = 0, totalPengeluaranP3 = 0;
   let totalKasbon = 0, totalKasbonP1 = 0, totalKasbonP2 = 0;
@@ -276,22 +276,33 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
       const prd = String(row[0]||"").trim();
       let match = false; let matchTag = null;
       if (!periodTag) {
-        // No filter — include all rows; still parse P1/P2/P3 tag from data for breakdown
+        // No filter — include all rows; still parse tag from data for breakdown
         match = true;
-        if (prd.match(/^\d{4}-\d{2}-P[123]$/)) matchTag = prd.substring(8);
+        if      (prd.match(/^\d{4}-\d{2}-\d{2}-P[123]$/)) matchTag = prd.substring(11);
+        else if (prd.match(/^\d{4}-\d{2}-P[123]$/))        matchTag = prd.substring(8);
+      } else if (prd.match(/^\d{4}-\d{2}-\d{2}-P[123]$/)) {
+        // NEW format: YYYY-MM-DD-Pn — match exactly on start date
+        const prdStartDate = prd.substring(0, 10);
+        const prdTag       = prd.substring(11);
+        if (periodTag === "P3") {
+          // Monthly recap: match any P tag for the same start date
+          match = startDateParam && prdStartDate === startDateParam;
+        } else {
+          match = startDateParam && prdStartDate === startDateParam && prdTag === periodTag;
+        }
+        if (match) matchTag = prdTag;
       } else if (prd.match(/^\d{4}-\d{2}-P[123]$/)) {
+        // OLD format: YYYY-MM-Pn — backward compat, check start month + next month
         const prdMonth = prd.substring(0, 7);
         const prdTag   = prd.substring(8);
         if (periodTag === "P3") {
-          // Monthly recap spans up to two calendar months (e.g. 25 May–24 Jun).
-          // Include pengeluaran tagged with startMonth OR the following month.
           const nm = nextMonth(rangeMonth);
           match = prdMonth === rangeMonth || prdMonth === nm;
-          if (match) matchTag = prdTag;
         } else {
-          match = prdMonth === rangeMonth && prdTag === periodTag;
-          if (match) matchTag = prdTag;
+          const nm = nextMonth(rangeMonth);
+          match = (prdMonth === rangeMonth || prdMonth === nm) && prdTag === periodTag;
         }
+        if (match) matchTag = prdTag;
       } else {
         match = false;
       }
