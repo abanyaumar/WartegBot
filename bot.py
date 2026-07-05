@@ -1270,6 +1270,9 @@ def build_ringkasan_msg(restaurant, s, period=1):
     kasbon_total = s.get("kasbon_total", 0)
     kasbon_p1    = s.get("kasbon_p1", 0)
     kasbon_p2    = s.get("kasbon_p2", 0)
+    logger.info("DEBUG kasbon — restaurant=%s period=%d pe_p1=%d kasbon_p1=%d kasbon_p2=%d pe_raw=%s",
+                restaurant, period, pe_p1, kasbon_p1, kasbon_p2,
+                str({k: s.get(k) for k in ["pengeluaran_p1","kasbon_p1","kasbon_p2","kasbon_total"]}))
     gofood_monthly = s.get("total_gofood_netto", 0)  # monthly GoFood report total (authoritative for P3)
     rows = s.get("rows", [])
     om = sum(r.get("omzet", 0) for r in rows)
