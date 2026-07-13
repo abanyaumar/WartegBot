@@ -127,14 +127,16 @@ def extract_and_audit(image_bytes, restaurant):
         "2. Pendapatan GoFood/GrabFood/online order -> gofood_order (nominal bruto/kotor)\n"
         "   gofood_net = isi sama dengan gofood_order (potongan QRIS 0.7% dihitung otomatis sistem)\n"
         "   Jika tidak ada GoFood di laporan, isi 0.\n"
-        "3. Belanja Warung (LPG/es batu/operasional) -> belanja_warung\n"
+        "3. Belanja Warung (LPG/es batu/sabun/plastik/operasional harian) -> belanja_warung\n"
+        "   PENTING: baca TOTAL belanja_warung langsung dari angka yang tertulis di laporan.\n"
+        "   JANGAN hitung belanja_warung dari penjumlahan item — baca totalnya!\n"
         "4. Belanja Pasar (sembako/sayur/ayam/ikan/dll) -> belanja_pasar\n"
         + wkb_tuban_note +
         "\nATURAN: omzet = pemasukan TUNAI saja. GoFood HARUS dipisah ke gofood_order/gofood_net.\n\n"
         "OUTPUT dua bagian TANPA markdown:\n"
         "JSON_DATA:\n"
         '{"tanggal":"YYYY-MM-DD (gunakan tahun 2026 jika tahun tidak terbaca jelas)","omzet":0,"belanja_warung":0,"belanja_pasar":0,'
-        '"belanja_warung_items":{"lpg":0,"es_batu":0},'
+        '"belanja_warung_items":{"lpg":0,"es_batu":0,"lain_lain":0},'
         '"belanja_pasar_items":{"sembako":0,"sayur":0,"ayam":0,"ikan":0,"lain":0},'
         '"gofood_order":0,"gofood_net":0,"catatan":""}\n'
         "AUDIT:\n"
