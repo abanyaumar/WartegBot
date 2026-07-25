@@ -1799,6 +1799,7 @@ def build_p3_full_image(restaurant, periode_str, display_rows, p3_calc):
     return buf
 
 
+def build_ringkasan_msg(restaurant, s, period):
     """Returns a list of message parts to send (split to stay under Telegram 4096 limit)."""
     pe    = s.get("total_pengeluaran", 0)
     pe_p1 = s.get("pengeluaran_p1", 0)
