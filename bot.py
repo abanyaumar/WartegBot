@@ -1991,7 +1991,7 @@ async def send_ringkasan(update, ctx, restaurant, s, period):
     try:
         loop = asyncio.get_event_loop()
 
-        if period == 3 and len(rows) > 10:
+        if period == 3:
             # ── P3: two-column structured image ───────────────────────
             sr  = sorted(rows, key=_sk)
             p1r, p2r, p3r = sr[:10], sr[10:20], sr[20:]
