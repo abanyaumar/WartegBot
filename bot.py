@@ -847,7 +847,7 @@ async def peng_period_selected(update, ctx):
     labels = {"P1": "Periode 1 (Hari 1-10)", "P2": "Periode 2 (Hari 11-20)", "P3": "Periode 3 (Hari 21+)"}
     await q.edit_message_text(
         "<b>" + restaurant + " - " + labels.get(ptag, ptag) + "</b>\n\n"
-        "Ketik <b>tanggal mulai</b> periode ini, contoh:\n"
+        "Ketik <b>tanggal mulai P1</b> (hari pertama buka bulan ini), contoh:\n"
         "<code>25 Jun 2026</code>\n"
         "<code>25/06/2026</code>\n"
         "<code>2026-06-25</code>",
