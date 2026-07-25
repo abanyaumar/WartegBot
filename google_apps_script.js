@@ -283,14 +283,20 @@ function getSummary(restaurant, days, startDateParam, periodTag) {
         if      (prd.match(/^\d{4}-\d{2}-\d{2}-P[123]$/)) matchTag = prd.substring(11);
         else if (prd.match(/^\d{4}-\d{2}-P[123]$/))        matchTag = prd.substring(8);
       } else if (prd.match(/^\d{4}-\d{2}-\d{2}-P[123]$/)) {
-        // NEW format: YYYY-MM-DD-Pn — match exactly on start date
+        // NEW format: YYYY-MM-DD-Pn
+        // All periods should be tagged with P1 start date, but also handle entries
+        // tagged with their own period start date (within 29 days of P1 start).
         const prdStartDate = prd.substring(0, 10);
         const prdTag       = prd.substring(11);
+        const d1 = new Date(startDateParam + "T12:00:00Z").getTime();
+        const d2 = new Date(prdStartDate + "T12:00:00Z").getTime();
+        const diffDays = Math.round((d2 - d1) / 86400000);
         if (periodTag === "P3") {
-          // Monthly recap: match any P tag for the same start date
-          match = startDateParam && prdStartDate === startDateParam;
+          // Monthly recap: match any P tag within 29 days of P1 start
+          match = !!startDateParam && diffDays >= 0 && diffDays < 30;
         } else {
-          match = startDateParam && prdStartDate === startDateParam && prdTag === periodTag;
+          // P1/P2 query: match specific P tag within 19 days of P1 start
+          match = !!startDateParam && prdTag === periodTag && diffDays >= 0 && diffDays < 20;
         }
         if (match) matchTag = prdTag;
       } else if (prd.match(/^\d{4}-\d{2}-P[123]$/)) {
